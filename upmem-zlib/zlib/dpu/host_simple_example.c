@@ -79,8 +79,6 @@ int CPU_compress(FILE *source, FILE *dest, int level)
  */
 int CPU_decompress(FILE *source, FILE *dest)
 {
-	// TODO: Implement this
-	fprintf(stdout, "Not implemented yet");
 	int ret;
 	unsigned have;
 	z_stream strm;
@@ -228,7 +226,7 @@ int main(int argc, char **argv)
 			return ret;
 		} else if (strcmp(argv[2], "--decompress") == 0) {
 			// prepare the dpu decompression	
-			ret = DPU_decompress(fin, fout);
+			ret = DPU_decompress(fin, fout, Z_DEFAULT_COMPRESSION);
 			if (ret != Z_OK)
 				zerr(ret);
 			return ret;
