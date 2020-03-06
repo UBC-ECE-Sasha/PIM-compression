@@ -7,12 +7,31 @@
 
 #include <stddef.h>
 
-size_t dpu_uncompress(const char* compressed, 
-                      size_t compressed_len,
-                      char* uncompressed,
-                      size_t uncompressed_len);
+/* Defined here to avoid having to include system headers. */
+struct iovec {
+	void *iov_base;
+	size_t iov_len;
+};
 
-size_t dpu_uncompressed_length(const char* compressed, size_t compressed_len);
+/**
+ * Uncompress a snappy compressed buffer.
+ * @param compressed Input buffer containing the compressed data.
+ * @param length Length of the compressed buffer.
+ * @param uncompressed Output buffer. This buffer should be at least as long
+ *     as dpu_uncompressed_length(compressed).
+ * @return 0 if successful.
+ */
+int dpu_uncompress(const char* compressed, size_t length, char* uncompressed);
+
+/**
+ * Return the uncompressed length of the compressed file. If size can't be
+ * parsed, return -1.
+ * @param compressed Input buffer with the compressed data.
+ * @param length Length of the compressed buffer.
+ * @return 0 if successful.
+ */
+int dpu_uncompressed_length(const char* compressed, size_t length,
+                            size_t *result);
 
 #endif
 

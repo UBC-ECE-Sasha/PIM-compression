@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O3 -g -Wall -Wextra -Werror
+CFLAGS = --std=c99 -O3 -g -Wall -Wextra -Werror
 DPU_OPTS = `dpu-pkg-config --cflags --libs dpu`
 
 SOURCE = dpu_snappy.c
@@ -20,5 +20,5 @@ dpu:
 host: decompress_host
 	
 decompress_host: $(SOURCE)
-	$(CC) $(CFLAGS) $(DPU_OPTS) $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@ $(DPU_OPTS)
 
