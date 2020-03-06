@@ -1,21 +1,21 @@
 #include "dpu_decompress.h"
 
-size_t dpu_uncompress(const char* compressed, 
-                      size_t compressed_len,
-                      char* uncompressed,
-                      size_t uncompressed_len) {
+int dpu_uncompress(const char* compressed, 
+                   size_t compressed_len,
+                   char* uncompressed) {
     // TODO: implement this
     (void) compressed;
     (void) compressed_len;
     (void) uncompressed;
-    (void) uncompressed_len;
     return 0;
 }
 
-size_t dpu_uncompressed_length(const char* compressed, size_t compressed_len) {
+int dpu_uncompressed_length(const char* compressed, size_t compressed_len,
+                            size_t *result) {
     // TODO: implement this
     (void) compressed;
     (void) compressed_len;
+    *result = 0;
     return 0;
 }
 
