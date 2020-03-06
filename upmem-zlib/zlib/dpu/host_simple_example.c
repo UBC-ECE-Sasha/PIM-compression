@@ -114,16 +114,16 @@ int CPU_decompress(FILE *source, FILE *dest)
 		    assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
 		    switch (ret) {
 			    case Z_NEED_DICT:
-				ret = Z_DATA_ERROR;     /* and fall through */
+                    ret = Z_DATA_ERROR;     /* and fall through */
 			    case Z_DATA_ERROR:
 			    case Z_MEM_ERROR:
-				(void)inflateEnd(&strm);
-				return ret;
+                    (void)inflateEnd(&strm);
+                    return ret;
 		    }
 		    have = CHUNK - strm.avail_out;
 		    if (fwrite(out, 1, have, dest) != have || ferror(dest)) {
-			(void)inflateEnd(&strm);
-			return Z_ERRNO;
+                (void)inflateEnd(&strm);
+                return Z_ERRNO;
 		    }
 		} while (strm.avail_out == 0);
 
@@ -148,6 +148,24 @@ int DPU_compress(FILE *source, FILE *dest, int level)
 int DPU_decompress(FILE *source, FILE *dest, int level)
 {
 	// TODO: Implement this
+    
+    struct dpu_set_t dpus, dpu;
+    uint32_t res_size;
+
+    DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
+
+    DPU_FOREACH(dpus, dpu) {
+        break;
+    }
+
+    DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
+    /*DPU_ASSERT(dpu_copy_to(dpu, "inputSize", 0, &src_size, sizeof(src_size)));*/
+    DPU_ASSERT(dpu_launch(dpu, DPU_SYNCHRONOUS));
+
+    // copy data from DPU if desired
+    
+    DPU_ASSERT(dpu_free(dpus));
+
 	fprintf(stdout, "Not implemented yet");
 
 	return 0;
