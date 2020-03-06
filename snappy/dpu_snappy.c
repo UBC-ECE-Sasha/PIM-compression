@@ -1,4 +1,5 @@
 #include <dpu.h>
+#include <dpu_log.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -61,6 +62,10 @@ snappy_status snappy_uncompressed_length(const char *compressed,
 
     DPU_ASSERT(dpu_copy_from(dpu, "uncompressed_length", 0, &res_size, sizeof(res_size)));
 
+    DPU_FOREACH(dpus, dpu) {
+        DPU_ASSERT(dpu_log_read(dpu, stdout));
+    }
+
     DPU_ASSERT(dpu_free(dpus));
 
     *result = res_size;
@@ -109,7 +114,7 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    fprintf(stderr, "snappy_uncompressed_length: %ld\n", uncompressed_size);
+    printf("snappy_uncompressed_length: %ld\n", uncompressed_size);
     return 0;
 }
 

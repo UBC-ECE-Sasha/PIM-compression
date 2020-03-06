@@ -18,3 +18,8 @@ This should return the uncompressed size of the test file (895).
 
 `alice.snappy` is text file that was originally compressed with snappy.
 
+### Initial result
+
+48 cycles to calculate size of test/alice.snappy
+48 instructions
+
