@@ -80,6 +80,44 @@ snappy_status snappy_validate_compressed_buffer(const char *compressed,
     return SNAPPY_OK;
 }
 
+static int read_input(char *input, char *input_buf, uint32_t *input_size) {
+    FILE *fin = fopen(input, "r");
+    fseek(fin, 0, SEEK_END);
+    *input_size = ftell(fin);
+    fseek(fin, 0, SEEK_SET);
+
+    if (*input_size > BUF_SIZE) {
+        fprintf(stderr, "input_size is too big (%d > %d)\n",
+                *input_size, BUF_SIZE);
+        return 1;
+    }
+   
+    size_t n = fread(input_buf, sizeof(*input_buf), *input_size, fin);
+    (void) n;
+    fclose(fin);
+
+    return 0;
+}
+
+static int get_uncompressed_length(char *input) {
+    uint32_t compressed_len;
+    if (read_input(input, compressed, &compressed_len)) {
+        return 1;
+    }
+
+    size_t result;
+    snappy_status status = snappy_uncompressed_length(compressed, 
+                                                      compressed_len, 
+                                                      &result);
+    if (status != SNAPPY_OK) {
+        fprintf(stderr, "encountered snappy error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("snappy_uncompressed_length: %ld\n", result);
+    return 0;
+}
+
 /**
  * Outputs the size of the decompressed snappy file.
  */
@@ -89,32 +127,6 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    char *input = argv[1];
-
-    FILE *fin = fopen(input, "r");
-    fseek(fin, 0, SEEK_END);
-    uint32_t input_size = ftell(fin);
-    fseek(fin, 0, SEEK_SET);
-
-    if (input_size > BUF_SIZE) {
-        fprintf(stderr, "input_size is too big (%d > %d)\n",
-                input_size, BUF_SIZE);
-        exit(EXIT_FAILURE);
-    }
-
-    size_t n_read = fread(compressed, sizeof(*compressed), input_size, fin);
-    (void) n_read;
-    fclose(fin);
-
-    size_t uncompressed_size = 0;
-    snappy_status status = snappy_uncompressed_length(compressed, input_size, 
-                                                      &uncompressed_size);
-    if (status != SNAPPY_OK) {
-        fprintf(stderr, "encountered snappy error\n");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("snappy_uncompressed_length: %ld\n", uncompressed_size);
-    return 0;
+    return get_uncompressed_length(argv[1]);
 }
 
