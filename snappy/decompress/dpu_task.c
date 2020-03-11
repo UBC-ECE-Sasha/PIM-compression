@@ -13,18 +13,22 @@ __host char uncompressed[BUF_SIZE];
 
 int main() {
     size_t result = 0;
-    int err = 0;
 
     perfcounter_config(COUNT_CYCLES, true);
 
     // Check size of uncompressed result.
-    err = dpu_uncompressed_length(compressed, compressed_length, &result);
-    if (err) {
-        printf("Completed in %ld cycles\n", perfcounter_get());
+    if (dpu_uncompressed_length(compressed, compressed_length, &result)) {
+        printf("Failed in %ld cycles\n", perfcounter_get());
         return -1;
     }
 
     uncompressed_length = result;
+
+    // Do the uncompress.
+    if (dpu_uncompress(compressed, compressed_length, uncompressed)) {
+        printf("Failed in %ld cycles\n", perfcounter_get());
+        return -1;
+    }
 
     printf("Completed in %ld cycles\n", perfcounter_get());
     return 0;

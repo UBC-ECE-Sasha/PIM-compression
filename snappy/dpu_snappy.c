@@ -11,6 +11,7 @@
 #define BUF_SIZE (1 << 10)
 
 static char compressed[BUF_SIZE];
+static char uncompressed[BUF_SIZE];
 
 snappy_status snappy_compress(const char* input,
                               size_t input_length,
@@ -28,11 +29,43 @@ snappy_status snappy_uncompress(const char* compressed,
                                 size_t compressed_length,
                                 char* uncompressed,
                                 size_t* uncompressed_length) {
-    // TODO use DPU_DECOMPRESS_PROGRAM
-    (void) compressed;
-    (void) compressed_length;
-    (void) uncompressed;
-    (void) uncompressed_length;
+    struct dpu_set_t dpus;
+    struct dpu_set_t dpu;
+    uint64_t res_size;
+
+    DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
+
+    DPU_FOREACH(dpus, dpu) {
+        break;
+    }
+
+    DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
+    DPU_ASSERT(dpu_copy_to(dpu, "compressed_length", 0, &compressed_length, 
+                           sizeof(compressed_length)));
+    DPU_ASSERT(dpu_copy_to(dpu, "compressed", 0, compressed, 
+                           (compressed_length + 3) & ~3));
+    DPU_ASSERT(dpu_launch(dpu, DPU_SYNCHRONOUS));
+
+    DPU_ASSERT(dpu_copy_from(dpu, "uncompressed_length", 0, &res_size, 
+                             sizeof(res_size)));
+
+    // Uncompressed size might be too big to read back to host.
+    if (res_size > BUF_SIZE) {
+        fprintf(stderr, "uncompressed file is too big (%ld > %d)\n", 
+                res_size, BUF_SIZE);
+        exit(EXIT_FAILURE);
+    }
+
+    DPU_ASSERT(dpu_copy_from(dpu, "uncompressed", 0, uncompressed, 
+                             (res_size + 3) & ~3));
+
+    DPU_FOREACH(dpus, dpu) {
+        DPU_ASSERT(dpu_log_read(dpu, stdout));
+    }
+
+    DPU_ASSERT(dpu_free(dpus));
+
+    *uncompressed_length = res_size;
     return SNAPPY_OK;
 }
 
@@ -56,11 +89,14 @@ snappy_status snappy_uncompressed_length(const char *compressed,
     }
 
     DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
-    DPU_ASSERT(dpu_copy_to(dpu, "compressed_length", 0, &compressed_length, sizeof(compressed_length)));
-    DPU_ASSERT(dpu_copy_to(dpu, "compressed", 0, compressed, (compressed_length + 3) & ~3));
+    DPU_ASSERT(dpu_copy_to(dpu, "compressed_length", 0, &compressed_length, 
+                           sizeof(compressed_length)));
+    DPU_ASSERT(dpu_copy_to(dpu, "compressed", 0, compressed, 
+                          (compressed_length + 3) & ~3));
     DPU_ASSERT(dpu_launch(dpu, DPU_SYNCHRONOUS));
 
-    DPU_ASSERT(dpu_copy_from(dpu, "uncompressed_length", 0, &res_size, sizeof(res_size)));
+    DPU_ASSERT(dpu_copy_from(dpu, "uncompressed_length", 0, &res_size, 
+                             sizeof(res_size)));
 
     DPU_FOREACH(dpus, dpu) {
         DPU_ASSERT(dpu_log_read(dpu, stdout));
@@ -80,6 +116,13 @@ snappy_status snappy_validate_compressed_buffer(const char *compressed,
     return SNAPPY_OK;
 }
 
+/**
+ * Read the contents of a file into an in-memory buffer. Upon success,
+ * return 0 and write the amount read to input_size.
+ * @param input The input filename.
+ * @param input_buf The buffer to write the contents to.
+ * @param input_size Size of input.
+ */
 static int read_input(char *input, char *input_buf, uint32_t *input_size) {
     FILE *fin = fopen(input, "r");
     fseek(fin, 0, SEEK_END);
@@ -95,6 +138,20 @@ static int read_input(char *input, char *input_buf, uint32_t *input_size) {
     size_t n = fread(input_buf, sizeof(*input_buf), *input_size, fin);
     (void) n;
     fclose(fin);
+
+    return 0;
+}
+
+/**
+ * Write the contents of the output buffer to a file.
+ * @param output The output filename.
+ * @param output_buf Pointer to the buffer containing the contents.
+ * @param output_size Size of buffer contents.
+ */
+static int write_output(char *output, char *output_buf, size_t output_size) {
+    FILE *fout = fopen(output, "w");
+    fwrite(output_buf, sizeof(*output_buf), output_size, fout);
+    fclose(fout);
 
     return 0;
 }
@@ -118,15 +175,42 @@ static int get_uncompressed_length(char *input) {
     return 0;
 }
 
+static int uncompress(char *input, char *output) {
+    uint32_t compressed_len;
+    if (read_input(input, compressed, &compressed_len)) {
+        return 1;
+    }
+
+    size_t uncompressed_len = 0;
+    snappy_status status = snappy_uncompress(compressed, compressed_len,
+                                             uncompressed, &uncompressed_len);
+    if (status != SNAPPY_OK) {
+        fprintf(stderr, "encountered snappy error\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (write_output(output, uncompressed, uncompressed_len)) {
+        return 1;
+    }
+
+    printf("uncompressed %ld bytes to: %s\n", uncompressed_len, output);
+    return 0;
+}
+
 /**
  * Outputs the size of the decompressed snappy file.
  */
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s <compressed_input>\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "usage: %s <compressed_input> (<output>)\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    return get_uncompressed_length(argv[1]);
+    switch (argc) {
+        case 2:
+            return get_uncompressed_length(argv[1]);
+        case 3:
+            return uncompress(argv[1], argv[2]);
+    }
 }
 
