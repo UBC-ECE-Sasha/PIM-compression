@@ -9,9 +9,9 @@
 #define DPU_DECOMPRESS_PROGRAM "decompress/decompress.dpu"
 
 #define BUF_SIZE (1 << 10)
+#define ALIGN(x) (x + 3) & ~3
 
-static char compressed[BUF_SIZE];
-static char uncompressed[BUF_SIZE];
+#define DEBUG 1
 
 snappy_status snappy_compress(const char* input,
                               size_t input_length,
@@ -42,8 +42,8 @@ snappy_status snappy_uncompress(const char* compressed,
     DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
     DPU_ASSERT(dpu_copy_to(dpu, "compressed_length", 0, &compressed_length, 
                            sizeof(compressed_length)));
-    DPU_ASSERT(dpu_copy_to(dpu, "compressed", 0, compressed, 
-                           (compressed_length + 3) & ~3));
+    DPU_ASSERT(dpu_copy_to(dpu, "compressed", 0, compressed,
+                           ALIGN(compressed_length)));
     DPU_ASSERT(dpu_launch(dpu, DPU_SYNCHRONOUS));
 
     DPU_ASSERT(dpu_copy_from(dpu, "uncompressed_length", 0, &res_size, 
@@ -57,7 +57,7 @@ snappy_status snappy_uncompress(const char* compressed,
     }
 
     DPU_ASSERT(dpu_copy_from(dpu, "uncompressed", 0, uncompressed, 
-                             (res_size + 3) & ~3));
+                             ALIGN(res_size)));
 
     DPU_FOREACH(dpus, dpu) {
         DPU_ASSERT(dpu_log_read(dpu, stdout));
@@ -134,6 +134,10 @@ static int read_input(char *input, char *input_buf, uint32_t *input_size) {
                 *input_size, BUF_SIZE);
         return 1;
     }
+
+#if DEBUG
+    printf("read_input: read %d bytes from %s\n", *input_size, input);
+#endif
    
     size_t n = fread(input_buf, sizeof(*input_buf), *input_size, fin);
     (void) n;
@@ -157,6 +161,8 @@ static int write_output(char *output, char *output_buf, size_t output_size) {
 }
 
 static int get_uncompressed_length(char *input) {
+    char compressed[BUF_SIZE];
+
     uint32_t compressed_len;
     if (read_input(input, compressed, &compressed_len)) {
         return 1;
@@ -176,6 +182,9 @@ static int get_uncompressed_length(char *input) {
 }
 
 static int uncompress(char *input, char *output) {
+    char compressed[BUF_SIZE];
+    char uncompressed[BUF_SIZE];
+
     uint32_t compressed_len;
     if (read_input(input, compressed, &compressed_len)) {
         return 1;
@@ -188,6 +197,8 @@ static int uncompress(char *input, char *output) {
         fprintf(stderr, "encountered snappy error\n");
         exit(EXIT_FAILURE);
     }
+
+    printf("host result: %s\n", uncompressed);
 
     if (write_output(output, uncompressed, uncompressed_len)) {
         return 1;
