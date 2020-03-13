@@ -313,16 +313,6 @@ static bool read_uncompressed_length(struct snappy_decompressor *d,
     return true;
 }
 
-/* Called before decompression */
-static inline void writer_set_expected_length(struct writer *w, size_t len) {
-    w->op_limit = w->op + len;
-}
-
-/* Called after decompression */
-static inline bool writer_check_length(struct writer *w) {
-    return w->op == w->op_limit;
-}
-
 static inline bool writer_try_fast_append(struct writer *w, const char *ip,
                                           uint32_t available_bytes,
                                           uint32_t len) {
@@ -498,31 +488,51 @@ static void decompress_all_tags(struct snappy_decompressor *d,
 #undef MAYBE_REFILL
 
 static int internal_uncompress(struct source *reader, struct writer *writer, 
-                               uint32_t max_len) {
-    struct snappy_decompressor decompressor;
-    uint32_t uncompressed_len = 0;
+                               uint32_t max_len, uint32_t *uncompressed_len) {
+    /*
+    char output[] = "fake output";
+    *uncompressed_len = (uint32_t) strlen(output);
 
-    init_snappy_decompressor(&decompressor, reader);
+    strcpy(writer->base, output);
 
-    if (!read_uncompressed_length(&decompressor, &uncompressed_len))
+    (void) reader;
+    (void) max_len;
+
+    return 0;
+    */
+
+    struct snappy_decompressor decompressor = {
+        .reader = reader,
+        .ip = NULL,
+        .ip_limit = NULL,
+        .peeked = 0,
+        .eof = false
+    };
+
+    if (!read_uncompressed_length(&decompressor, uncompressed_len))
         return -EIO;
-    /* Protect against possible DoS attack */
+
+    // Protect against possible DoS attack
     if ((uint64_t) (uncompressed_len) > max_len)
         return -EIO;
 
-    writer_set_expected_length(writer, uncompressed_len);
+    // Set the expected output end
+    writer->op_limit = writer->op + *uncompressed_len;
 
-    /* Process the entire input */
     decompress_all_tags(&decompressor, writer);
 
     exit_snappy_decompressor(&decompressor);
-    if (decompressor.eof && writer_check_length(writer))
-        return 0;
-    return -EIO;
+
+    // Check that decompressor reached EOF, and output reached the end
+    if (!decompressor.eof || writer->op != writer->op_limit)
+        return -EIO;
+
+    return 0;
 }
 
 static int snappy_uncompress_iov(struct iovec *iov_in, int iov_in_len,
-                                 size_t input_len, char *uncompressed) {
+                                 size_t input_len, char *uncompressed,
+                                 size_t *uncompressed_len) {
     struct source reader = {
         .iov = iov_in,
         .iovlen = iov_in_len,
@@ -532,7 +542,13 @@ static int snappy_uncompress_iov(struct iovec *iov_in, int iov_in_len,
         .base = uncompressed,
         .op = uncompressed
     };
-    return internal_uncompress(&reader, &output, 0xffffffff);
+
+    uint32_t output_len;
+    int err = internal_uncompress(&reader, &output, 0xffffffff, &output_len);
+    if (err) return err;
+
+    *uncompressed_len = output_len;
+    return 0;
 }
 
 /**
@@ -585,22 +601,31 @@ done:
     return (const char *)(ptr);
 }
 
+static void suppress_warnings() {
+    (void) &init_snappy_decompressor;
+    (void) &exit_snappy_decompressor;
+    (void) &read_uncompressed_length;
+    (void) &decompress_all_tags;
+}
+
 /*********************
  * Public functions  *
  *********************/
 
-int dpu_uncompress(const char *compressed, 
-                   size_t compressed_len,
-                   char *uncompressed) {
+int dpu_uncompress(const char *compressed, size_t compressed_len,
+                   char *uncompressed, size_t *uncompressed_length) {
     struct iovec iov = {
         .iov_base = (char *)compressed,
         .iov_len = compressed_len
     };
-    return snappy_uncompress_iov(&iov, 1, compressed_len, uncompressed);
+    return snappy_uncompress_iov(&iov, 1, compressed_len, uncompressed, 
+                                 uncompressed_length);
 }
 
 int dpu_uncompressed_length(const char* compressed, size_t compressed_len,
                             size_t *result) {
+    suppress_warnings();
+
     uint32_t v;
     const char *limit = compressed + compressed_len;
     if (varint_parse32_with_limit(compressed, limit, &v) == NULL) {

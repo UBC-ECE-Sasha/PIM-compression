@@ -8,14 +8,16 @@
 #include <stddef.h>
 
 /**
- * Uncompress a snappy compressed buffer.
+ * Uncompress a snappy compressed buffer. If successful, return 0 and write
+ * the size of the uncompressed contents to uncompressed_length.
  * @param compressed Input buffer containing the compressed data.
  * @param length Length of the compressed buffer.
  * @param uncompressed Output buffer. This buffer should be at least as long
  *     as dpu_uncompressed_length(compressed).
  * @return 0 if successful.
  */
-int dpu_uncompress(const char *compressed, size_t length, char *uncompressed);
+int dpu_uncompress(const char *compressed, size_t length, char *uncompressed,
+                   size_t *uncompressed_length);
 
 /**
  * Return the uncompressed length of the compressed file. If size can't be
