@@ -658,8 +658,6 @@ int inflate(z_streamp strm, int flush)
             if ((state->wrap & 2) && hold == 0x8b1f) {  /* gzip header */
                 if (state->wbits == 0)
                     state->wbits = 15;
-                state->check = crc32(0L, Z_NULL, 0);
-                CRC2(state->check, hold);
                 INITBITS();
                 state->mode = FLAGS;
                 break;
@@ -712,16 +710,12 @@ int inflate(z_streamp strm, int flush)
             }
             if (state->head != Z_NULL)
                 state->head->text = (int)((hold >> 8) & 1);
-            if ((state->flags & 0x0200) && (state->wrap & 4))
-                CRC2(state->check, hold);
             INITBITS();
             state->mode = TIME;
         case TIME:
             NEEDBITS(32);
             if (state->head != Z_NULL)
                 state->head->time = hold;
-            if ((state->flags & 0x0200) && (state->wrap & 4))
-                CRC4(state->check, hold);
             INITBITS();
             state->mode = OS;
         case OS:
@@ -730,8 +724,6 @@ int inflate(z_streamp strm, int flush)
                 state->head->xflags = (int)(hold & 0xff);
                 state->head->os = (int)(hold >> 8);
             }
-            if ((state->flags & 0x0200) && (state->wrap & 4))
-                CRC2(state->check, hold);
             INITBITS();
             state->mode = EXLEN;
         case EXLEN:
@@ -740,8 +732,6 @@ int inflate(z_streamp strm, int flush)
                 state->length = (unsigned)(hold);
                 if (state->head != Z_NULL)
                     state->head->extra_len = (unsigned)hold;
-                if ((state->flags & 0x0200) && (state->wrap & 4))
-                    CRC2(state->check, hold);
                 INITBITS();
             }
             else if (state->head != Z_NULL)
@@ -759,8 +749,6 @@ int inflate(z_streamp strm, int flush)
                                 len + copy > state->head->extra_max ?
                                 state->head->extra_max - len : copy);
                     }
-                    if ((state->flags & 0x0200) && (state->wrap & 4))
-                        state->check = crc32(state->check, next, copy);
                     have -= copy;
                     next += copy;
                     state->length -= copy;
@@ -780,8 +768,6 @@ int inflate(z_streamp strm, int flush)
                             state->length < state->head->name_max)
                         state->head->name[state->length++] = (Bytef)len;
                 } while (len && copy < have);
-                if ((state->flags & 0x0200) && (state->wrap & 4))
-                    state->check = crc32(state->check, next, copy);
                 have -= copy;
                 next += copy;
                 if (len) goto inf_leave;
@@ -801,8 +787,6 @@ int inflate(z_streamp strm, int flush)
                             state->length < state->head->comm_max)
                         state->head->comment[state->length++] = (Bytef)len;
                 } while (len && copy < have);
-                if ((state->flags & 0x0200) && (state->wrap & 4))
-                    state->check = crc32(state->check, next, copy);
                 have -= copy;
                 next += copy;
                 if (len) goto inf_leave;
@@ -824,7 +808,7 @@ int inflate(z_streamp strm, int flush)
                 state->head->hcrc = (int)((state->flags >> 9) & 1);
                 state->head->done = 1;
             }
-            strm->adler = state->check = crc32(0L, Z_NULL, 0);
+            /*strm->adler = state->check = crc32(0L, Z_NULL, 0);*/
             state->mode = TYPE;
             break;
 #endif
@@ -1195,8 +1179,8 @@ int inflate(z_streamp strm, int flush)
                 strm->total_out += out;
                 state->total += out;
                 if ((state->wrap & 4) && out)
-                    strm->adler = state->check =
-                        UPDATE(state->check, put - out, out);
+                    /*strm->adler = state->check =*/
+                        /*UPDATE(state->check, put - out, out);*/
                 out = left;
                 if ((state->wrap & 4) && (
 #ifdef GUNZIP
@@ -1258,8 +1242,8 @@ int inflate(z_streamp strm, int flush)
     strm->total_out += out;
     state->total += out;
     if ((state->wrap & 4) && out)
-        strm->adler = state->check =
-            UPDATE(state->check, strm->next_out - out, out);
+        /*strm->adler = state->check =*/
+            /*UPDATE(state->check, strm->next_out - out, out);*/
     strm->data_type = (int)state->bits + (state->last ? 64 : 0) +
                       (state->mode == TYPE ? 128 : 0) +
                       (state->mode == LEN_ || state->mode == COPY_ ? 256 : 0);

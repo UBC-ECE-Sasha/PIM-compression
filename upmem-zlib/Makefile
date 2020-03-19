@@ -6,7 +6,7 @@ DPU_CFLAGS 				= -O2 -flto -g -w
 CC 						= gcc
 CFLAGS 					= -g -w `dpu-pkg-config --cflags --libs dpu`
 
-DPU_COMMON_SOURCES		= zlib/adler32.c zlib/crc32.c common/zutil.c
+DPU_COMMON_SOURCES		= zlib/adler32.c common/zutil.c
 DPU_COMMON_INCLUDES		= -Izlib/ -Icommon -Lzlib/
 
 COMMON_SOURCES			=
