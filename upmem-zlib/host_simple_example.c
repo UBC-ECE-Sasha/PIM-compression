@@ -154,8 +154,9 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
     uint32_t res_size;
 
     DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
-
-    DPU_ASSERT(dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL));
+    int ret = dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL);
+    fprintf(stdout, "Result of dpu_load: %d\n", ret);
+    DPU_ASSERT(ret);
     // copy data from DPU if desired
     /*DPU_ASSERT(dpu_copy_to(dpu, "inputSize", 0, &src_size, sizeof(src_size)));*/
     DPU_ASSERT(dpu_launch(dpus, DPU_SYNCHRONOUS));
@@ -169,7 +170,7 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
     
     DPU_ASSERT(dpu_free(dpus));
 
-	fprintf(stdout, "Not implemented yet");
+	fprintf(stdout, "Not implemented yet\n");
 
 	return 0;
 }

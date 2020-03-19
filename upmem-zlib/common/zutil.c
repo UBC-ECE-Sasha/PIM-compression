@@ -303,12 +303,13 @@ extern voidp  calloc OF((uInt items, uInt size));
 extern void   free   OF((voidpf ptr));
 #endif
 
-voidpf ZLIB_INTERNAL zcalloc (opaque, items, size)
+void* ZLIB_INTERNAL zcalloc (opaque, items, size)
     voidpf opaque;
     unsigned items;
     unsigned size;
 {
     (void)opaque;
+    return NULL;
     return buddy_alloc(items * size);
     /*return sizeof(uInt) > 2 ? (voidpf)malloc(items * size) :*/
                               /*(voidpf)calloc(items, size);*/
@@ -316,7 +317,7 @@ voidpf ZLIB_INTERNAL zcalloc (opaque, items, size)
 
 void ZLIB_INTERNAL zcfree (opaque, ptr)
     voidpf opaque;
-    voidpf ptr;
+    void *ptr;
 {
     (void)opaque;
     buddy_free(ptr);
