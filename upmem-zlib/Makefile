@@ -1,7 +1,7 @@
 RM 						= rm -rf
 
 DPU_CC 					= dpu-upmem-dpurte-clang
-DPU_CFLAGS 				= -O2 -flto -g -w
+DPU_CFLAGS 				= -Os -flto -g -w
 
 CC 						= gcc
 CFLAGS 					= -g -w `dpu-pkg-config --cflags --libs dpu`

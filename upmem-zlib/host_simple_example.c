@@ -17,7 +17,8 @@
 #include <assert.h>
 #include "zlib.h"
 
-#define DPU_DECOMPRESS_PROGRAM "decompress.dpu"
+#define DPU_DECOMPRESS_PROGRAM "./decompress.dpu"
+/*#define DPU_DECOMPRESS_PROGRAM "./helloworld"*/
 #define DPU_COMPRESS_PROGRAM "compress.dpu"
 #define CHUNK 16384
 
@@ -154,15 +155,17 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
 
     DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
 
+    DPU_ASSERT(dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL));
+    // copy data from DPU if desired
+    /*DPU_ASSERT(dpu_copy_to(dpu, "inputSize", 0, &src_size, sizeof(src_size)));*/
+    DPU_ASSERT(dpu_launch(dpus, DPU_SYNCHRONOUS));
+
     DPU_FOREACH(dpus, dpu) {
+        DPU_ASSERT(dpu_log_read(dpu, stdout));
         break;
     }
 
-    DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
-    /*DPU_ASSERT(dpu_copy_to(dpu, "inputSize", 0, &src_size, sizeof(src_size)));*/
-    DPU_ASSERT(dpu_launch(dpu, DPU_SYNCHRONOUS));
 
-    // copy data from DPU if desired
     
     DPU_ASSERT(dpu_free(dpus));
 
