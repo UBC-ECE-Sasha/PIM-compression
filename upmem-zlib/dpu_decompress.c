@@ -13,18 +13,11 @@
 #define CHUNK 16384
 
 // define host accessible variables
-/*__host uint32_t input_size;*/
-/*__host uint32_t result_size;*/
-/*__host uint8_t input[INPUT_SIZE];*/
-/*__host uint8_t output[OUTPUT_SIZE];*/
-/*__host uint8_t ret;*/
-
-uint32_t input_size;
-uint32_t result_size;
-uint8_t input[INPUT_SIZE];
-uint8_t output[OUTPUT_SIZE];
-uint8_t ret;
-
+__host uint32_t input_size;
+__host uint32_t result_size;
+__host uint8_t input[INPUT_SIZE];
+__host uint8_t output[OUTPUT_SIZE];
+__host uint32_t ret;
 
 uint32_t bytes_read = 0;
 uint32_t bytes_written = 0;
