@@ -16,6 +16,7 @@
 #include <string.h>
 #include <assert.h>
 #include "zlib.h"
+#include "common.h"
 
 #define DPU_DECOMPRESS_PROGRAM "./decompress.dpu"
 /*#define DPU_DECOMPRESS_PROGRAM "./helloworld"*/
@@ -157,8 +158,38 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
     int ret = dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL);
     fprintf(stdout, "Result of dpu_load: %d\n", ret);
     DPU_ASSERT(ret);
-    // copy data from DPU if desired
-    /*DPU_ASSERT(dpu_copy_to(dpu, "inputSize", 0, &src_size, sizeof(src_size)));*/
+
+    // Get the source file size
+    uint32_t file_size = 0;
+    if (fseek(source, 0L, SEEK_END) == 0) {
+        file_size = ftell(source);
+
+        if (fseek(source, 0L, SEEK_SET) != 0) {
+            fprintf(stderr, "Error occurred while reading file\n");
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (file_size == 0) {
+        fprintf(stderr, "Unable to read source file, is it empty?\n");
+    } else if (file_size > DPU_CACHE_SIZE) {
+        // TODO: Use MRAM instead of WRAM
+        fprintf(stderr, "File size too big for DPU cache at the moment. Max size is 16K\n");
+        return EXIT_FAILURE;
+    }
+
+    // Copy source data into a buffer
+    uint8_t src_buf[DPU_CACHE_SIZE];
+    size_t bytes_read = fread(src_buf, sizeof(char), file_size, source);
+    if (bytes_read != file_size) {
+        fprintf(stderr, "Error reading file into host buffer\n");
+        return EXIT_FAILURE;
+    }
+    
+
+    // copy data to DPU 
+    DPU_ASSERT(dpu_copy_to(dpus, "input_size", 0, &file_size, sizeof(file_size)));
+    DPU_ASSERT(dpu_copy_to(dpus, "input", 0, src_buf, DPU_CACHE_SIZE));
     DPU_ASSERT(dpu_launch(dpus, DPU_SYNCHRONOUS));
 
     DPU_FOREACH(dpus, dpu) {
@@ -166,13 +197,26 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
         break;
     }
 
+    // copy data from DPU
+    uint32_t result_size;
+    DPU_ASSERT(dpu_copy_from(dpu, "result_size", 0, &result_size, sizeof(result_size)));
+    uint8_t result_buf[result_size];
+    DPU_ASSERT(dpu_copy_from(dpu, "output", 0, result_buf, result_size));
+    uint32_t dpu_ret;
+    DPU_ASSERT(dpu_copy_from(dpu, "ret", 0, &dpu_ret, sizeof(dpu_ret)));
 
+    // write data to output file
+    size_t bytes_written = fwrite(result_buf, 1, result_size, dest);
+    if (bytes_written != result_size) {
+        fprintf(stderr, "Failed to write to destination file\n");
+        return EXIT_FAILURE;
+    }
     
     DPU_ASSERT(dpu_free(dpus));
 
 	fprintf(stdout, "Not implemented yet\n");
 
-	return 0;
+	return dpu_ret;
 }
 
 /* report a zlib or i/o error */

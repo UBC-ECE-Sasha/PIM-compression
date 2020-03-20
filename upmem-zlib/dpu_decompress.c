@@ -7,16 +7,18 @@
 /*#include "zlib.h"*/
 #include "zlib/zlib.h"
 #include <alloc.h>
+#include "common.h"
 
-#define INPUT_SIZE 4096
-#define OUTPUT_SIZE 4096
+#define BUFFER_SIZE (1 << 20)
+#define CACHE_SIZE (1 << 14)
 #define CHUNK 16384
 
 // define host accessible variables
 __host uint32_t input_size;
 __host uint32_t result_size;
-__host uint8_t input[INPUT_SIZE];
-__host uint8_t output[OUTPUT_SIZE];
+__host uint8_t input[DPU_CACHE_SIZE];
+__host uint8_t output[DPU_CACHE_SIZE];
+__mram_noinit uint8_t DPU_BUFFER[DPU_BUFFER_SIZE];
 __host uint32_t ret;
 
 uint32_t bytes_read = 0;
@@ -26,7 +28,7 @@ uint32_t read_input(uint8_t dest[], uint32_t chunk_size) {
     // FIXME: Might need to use LDMA operations?
     uint32_t counter = 0;
     while(counter < chunk_size && bytes_read < input_size) {
-        dest[counter++] = input[bytes_read++];
+        /*dest[counter++] = input[bytes_read++];*/
     }
     return counter;
 }
@@ -34,8 +36,8 @@ uint32_t read_input(uint8_t dest[], uint32_t chunk_size) {
 uint32_t write_output(uint8_t src[], uint32_t have_size) {
     // FIXME: Might need to use LDMA operations?
     uint32_t counter = 0;
-    while(counter < have_size && bytes_written < OUTPUT_SIZE) {
-        output[bytes_written++] = src[counter++];
+    while(counter < have_size && bytes_written < BUFFER_SIZE) {
+        /*output[bytes_written++] = src[counter++];*/
     }
     return counter;
 }
@@ -106,7 +108,7 @@ int main() {
     // Initialize the buddy allocator
     buddy_init(4096);
 
-    ret = run_decompression;
+    ret = run_decompression();
     return 0;
     
 }

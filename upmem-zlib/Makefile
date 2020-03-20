@@ -10,7 +10,7 @@ DPU_COMMON_SOURCES		= zlib/adler32.c common/zutil.c
 DPU_COMMON_INCLUDES		= -Icommon -Izlib/ -Lzlib/
 
 COMMON_SOURCES			=
-COMMON_INCLUDES 		= -Izlib/lib/ -Lzlib/lib/ -lz 
+COMMON_INCLUDES 		= -Izlib/lib/ -Lzlib/lib/ -lz -Icommon
 
 DPU_DECOMPRESS_SOURCES 	= dpu_decompress.c $(DPU_COMMON_SOURCES) decompress/inflate.c zlib/inffast.c zlib/inftrees.c 
 DPU_DECOMPRESS_INCLUDES = -Idecompress $(DPU_COMMON_INCLUDES)
