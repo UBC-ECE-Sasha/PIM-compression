@@ -202,7 +202,7 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
     DPU_ASSERT(dpu_copy_from(dpu, "result_size", 0, &result_size, sizeof(result_size)));
     uint8_t result_buf[result_size];
     DPU_ASSERT(dpu_copy_from(dpu, "output", 0, result_buf, result_size));
-    uint32_t dpu_ret;
+    int32_t dpu_ret;
     DPU_ASSERT(dpu_copy_from(dpu, "ret", 0, &dpu_ret, sizeof(dpu_ret)));
 
     // write data to output file

@@ -309,7 +309,6 @@ void* ZLIB_INTERNAL zcalloc (opaque, items, size)
     unsigned size;
 {
     (void)opaque;
-    return NULL;
     return buddy_alloc(items * size);
     /*return sizeof(uInt) > 2 ? (voidpf)malloc(items * size) :*/
                               /*(voidpf)calloc(items, size);*/
