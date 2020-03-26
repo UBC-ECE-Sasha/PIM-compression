@@ -190,12 +190,14 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
     // copy data to DPU 
     DPU_ASSERT(dpu_copy_to(dpus, "input_size", 0, &file_size, sizeof(file_size)));
     DPU_ASSERT(dpu_copy_to(dpus, "input", 0, src_buf, DPU_CACHE_SIZE));
-    DPU_ASSERT(dpu_launch(dpus, DPU_SYNCHRONOUS));
+    ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
 
     DPU_FOREACH(dpus, dpu) {
         DPU_ASSERT(dpu_log_read(dpu, stdout));
         break;
     }
+
+    DPU_ASSERT(ret);
 
     // copy data from DPU
     uint32_t result_size;

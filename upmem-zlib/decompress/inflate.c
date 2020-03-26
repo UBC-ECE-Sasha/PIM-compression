@@ -617,6 +617,7 @@ unsigned copy;
 
 int inflate(z_streamp strm, int flush)
 {
+    printf("Enter inflate 1 function\n");
     struct inflate_state FAR *state;
     z_const unsigned char FAR *next;    /* next input */
     unsigned char FAR *put;     /* next output */
@@ -636,6 +637,7 @@ int inflate(z_streamp strm, int flush)
     static const unsigned short order[19] = /* permutation of code lengths */
         {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
+    printf("Inflate check\n");
     if (inflateStateCheck(strm) || strm->next_out == Z_NULL ||
         (strm->next_in == Z_NULL && strm->avail_in != 0))
         return Z_STREAM_ERROR;
@@ -643,12 +645,14 @@ int inflate(z_streamp strm, int flush)
     state = (struct inflate_state FAR *)strm->state;
     if (state->mode == TYPE) state->mode = TYPEDO;      /* skip check */
     LOAD();
+    printf("Finished load operation\n");
     in = have;
     out = left;
     ret = Z_OK;
     for (;;)
         switch (state->mode) {
         case HEAD:
+            printf("case HEAD\n");
             if (state->wrap == 0) {
                 state->mode = TYPEDO;
                 break;
@@ -695,11 +699,13 @@ int inflate(z_streamp strm, int flush)
             INITBITS();
             break;
         case DICTID:
+            printf("case DICTID\n");
             NEEDBITS(32);
             strm->adler = state->check = ZSWAP32(hold);
             INITBITS();
             state->mode = DICT;
         case DICT:
+            printf("case DICT\n");
             if (state->havedict == 0) {
                 RESTORE();
                 return Z_NEED_DICT;
@@ -707,8 +713,10 @@ int inflate(z_streamp strm, int flush)
             strm->adler = state->check = adler32(0L, Z_NULL, 0);
             state->mode = TYPE;
         case TYPE:
+            printf("case TYPE\n");
             if (flush == Z_BLOCK || flush == Z_TREES) goto inf_leave;
         case TYPEDO:
+            printf("case TYPEDO\n");
             if (state->last) {
                 BYTEBITS();
                 state->mode = CHECK;
@@ -745,6 +753,7 @@ int inflate(z_streamp strm, int flush)
             DROPBITS(2);
             break;
         case STORED:
+            printf("case STORED\n");
             BYTEBITS();                         /* go to byte boundary */
             NEEDBITS(32);
             if ((hold & 0xffff) != ((hold >> 16) ^ 0xffff)) {
@@ -759,8 +768,10 @@ int inflate(z_streamp strm, int flush)
             state->mode = COPY_;
             if (flush == Z_TREES) goto inf_leave;
         case COPY_:
+            printf("case COPY_\n");
             state->mode = COPY;
         case COPY:
+            printf("case COPY\n");
             copy = state->length;
             if (copy) {
                 if (copy > have) copy = have;
@@ -817,6 +828,7 @@ int inflate(z_streamp strm, int flush)
             state->have = 0;
             state->mode = CODELENS;
         case CODELENS:
+            printf("case CODELENS\n");
             while (state->have < state->nlen + state->ndist) {
                 for (;;) {
                     here = state->lencode[BITS(state->lenbits)];
@@ -864,6 +876,8 @@ int inflate(z_streamp strm, int flush)
                 }
             }
 
+            printf("Finish CODELENS while loop\n");
+
             /* handle error breaks in while */
             if (state->mode == BAD) break;
 
@@ -880,8 +894,11 @@ int inflate(z_streamp strm, int flush)
             state->next = state->codes;
             state->lencode = (const code FAR *)(state->next);
             state->lenbits = 9;
+
+            printf("reached inflate_table() 1\n");
             ret = inflate_table(LENS, state->lens, state->nlen, &(state->next),
                                 &(state->lenbits), state->work);
+            printf("finished inflate_table() 1\n");
             if (ret) {
                 strm->msg = (char *)"invalid literal/lengths set";
                 state->mode = BAD;
@@ -889,6 +906,7 @@ int inflate(z_streamp strm, int flush)
             }
             state->distcode = (const code FAR *)(state->next);
             state->distbits = 6;
+            printf("reached inflate_table() 2\n");
             ret = inflate_table(DISTS, state->lens + state->nlen, state->ndist,
                             &(state->next), &(state->distbits), state->work);
             if (ret) {
@@ -900,8 +918,10 @@ int inflate(z_streamp strm, int flush)
             state->mode = LEN_;
             if (flush == Z_TREES) goto inf_leave;
         case LEN_:
+            printf("case LEN_\n");
             state->mode = LEN;
         case LEN:
+            printf("case LEN\n");
             if (have >= 6 && left >= 258) {
                 RESTORE();
                 inflate_fast(strm, out);
@@ -951,6 +971,7 @@ int inflate(z_streamp strm, int flush)
             state->extra = (unsigned)(here.op) & 15;
             state->mode = LENEXT;
         case LENEXT:
+            printf("case LENEXT\n");
             if (state->extra) {
                 NEEDBITS(state->extra);
                 state->length += BITS(state->extra);
@@ -961,6 +982,7 @@ int inflate(z_streamp strm, int flush)
             state->was = state->length;
             state->mode = DIST;
         case DIST:
+            printf("case DIST\n");
             for (;;) {
                 here = state->distcode[BITS(state->distbits)];
                 if ((unsigned)(here.bits) <= bits) break;
@@ -988,6 +1010,7 @@ int inflate(z_streamp strm, int flush)
             state->extra = (unsigned)(here.op) & 15;
             state->mode = DISTEXT;
         case DISTEXT:
+            printf("case DISTEXT\n");
             if (state->extra) {
                 NEEDBITS(state->extra);
                 state->offset += BITS(state->extra);
@@ -1004,6 +1027,7 @@ int inflate(z_streamp strm, int flush)
             Tracevv((stderr, "inflate:         distance %u\n", state->offset));
             state->mode = MATCH;
         case MATCH:
+            printf("case MATCH\n");
             if (left == 0) goto inf_leave;
             copy = out - left;
             if (state->offset > copy) {         /* copy from window */
@@ -1049,12 +1073,14 @@ int inflate(z_streamp strm, int flush)
             if (state->length == 0) state->mode = LEN;
             break;
         case LIT:
+            printf("case LIT\n");
             if (left == 0) goto inf_leave;
             *put++ = (unsigned char)(state->length);
             left--;
             state->mode = LEN;
             break;
         case CHECK:
+            printf("case CHECK\n");
             if (state->wrap) {
                 NEEDBITS(32);
                 out -= left;
@@ -1079,15 +1105,20 @@ int inflate(z_streamp strm, int flush)
 
             state->mode = DONE;
         case DONE:
+            printf("case DONE\n");
             ret = Z_STREAM_END;
             goto inf_leave;
         case BAD:
+            printf("case BAD\n");
             ret = Z_DATA_ERROR;
             goto inf_leave;
         case MEM:
+            printf("case MEM\n");
             return Z_MEM_ERROR;
         case SYNC:
+            printf("case SYNC\n");
         default:
+            printf("case default\n");
             return Z_STREAM_ERROR;
         }
 
@@ -1098,6 +1129,7 @@ int inflate(z_streamp strm, int flush)
        Note: a memory error from inflate() is non-recoverable.
      */
   inf_leave:
+    printf("Reached inf_leave\n");
     RESTORE();
     if (state->wsize || (out != strm->avail_out && state->mode < BAD &&
             (state->mode < CHECK || flush != Z_FINISH)))

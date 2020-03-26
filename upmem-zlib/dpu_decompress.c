@@ -53,6 +53,7 @@ int run_decompression(void)
    uint8_t in_buf[CHUNK];
    uint8_t out_buf[CHUNK];
 
+   printf("First InflateInit\n");
    /* Allocate inflate state */
    strm.zalloc = Z_NULL;
    strm.zfree = Z_NULL;
@@ -65,6 +66,7 @@ int run_decompression(void)
 
    /* decompress until deflate stream ends or end of input buffer */
    do {
+       printf("Read new CHUNK\n");
        strm.avail_in = read_input(in_buf, CHUNK);
        if (strm.avail_in == 0)
            break;
@@ -72,6 +74,7 @@ int run_decompression(void)
 
        /* run inflate() on input until output buffer not full */
        do {
+           printf("Inflate a piece of the CHUNK\n");
            strm.avail_out = CHUNK;
            strm.next_out = out_buf;
            ret = inflate(&strm, Z_NO_FLUSH);
@@ -85,6 +88,8 @@ int run_decompression(void)
                     (void)inflateEnd(&strm);
                     return ret;
            }
+
+           printf("Write output of Inflate a piece of CHUNK\n");
            have = CHUNK - strm.avail_out;
            if (write_output(out_buf, have) != have) {
                (void)inflateEnd(&strm);
@@ -95,6 +100,7 @@ int run_decompression(void)
        /* done when inflate() says it's done */
    } while (ret != Z_STREAM_END);
 
+   printf("Finished, InflateEnd\n");
    /* clean up and return */
    (void)inflateEnd(&strm);
    return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
@@ -103,7 +109,7 @@ int run_decompression(void)
 int main() {
     ret = 0;
     // Start decompression
-    printf("Hello DPU!\n"); 
+    /*printf("Start DPU Decompress program\n"); */
 
     // Initialize the buddy allocator
     buddy_init((1 << 14));
