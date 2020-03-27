@@ -229,15 +229,19 @@ unsigned short FAR *work;
             here.val = 0;
         }
 
+        printf("Reached replicate indices...\n");
         /* replicate for those indices with low len bits equal to huff */
         incr = 1U << (len - drop);
         fill = 1U << curr;
         min = fill;                 /* save offset to next table */
+        /*printf("Entering do while loop\n"); */
         do {
             fill -= incr;
+            /*printf("Setting value inside the next[] array\n");*/
             next[(huff >> drop) + fill] = here;
         } while (fill != 0);
 
+        /*printf("Reached backwards increment...\n");*/
         /* backwards increment the len-bit code huff */
         incr = 1U << (len - 1);
         while (huff & incr)
@@ -256,6 +260,7 @@ unsigned short FAR *work;
             len = lens[work[sym]];
         }
 
+        printf("Reached create new subtable...\n");
         /* create new sub-table if needed */
         if (len > root && (huff & mask) != low) {
             /* if first time, transition to sub-tables */

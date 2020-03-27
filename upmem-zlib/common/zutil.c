@@ -308,6 +308,7 @@ void* ZLIB_INTERNAL zcalloc (opaque, items, size)
     unsigned items;
     unsigned size;
 {
+    printf("Entered the zcalloc memory allocator\n");
     (void)opaque;
     return buddy_alloc(items * size);
     /*return sizeof(uInt) > 2 ? (voidpf)malloc(items * size) :*/

@@ -219,8 +219,10 @@ int stream_size;
 #else
         strm->zfree = zcfree;
 #endif
+    printf("sizeof struct inflate_state: %d\n", sizeof(struct inflate_state));
     state = (struct inflate_state FAR *)
             ZALLOC(strm, 1, sizeof(struct inflate_state));
+    printf("pointer of the state pointer: 0x%x\n", state);
     if (state == Z_NULL) return Z_MEM_ERROR;
     Tracev((stderr, "inflate: allocated\n"));
     strm->state = (struct internal_state FAR *)state;
@@ -716,7 +718,7 @@ int inflate(z_streamp strm, int flush)
             printf("case TYPE\n");
             if (flush == Z_BLOCK || flush == Z_TREES) goto inf_leave;
         case TYPEDO:
-            printf("case TYPEDO\n");
+            /*printf("case TYPEDO\n");*/
             if (state->last) {
                 BYTEBITS();
                 state->mode = CHECK;
@@ -753,7 +755,7 @@ int inflate(z_streamp strm, int flush)
             DROPBITS(2);
             break;
         case STORED:
-            printf("case STORED\n");
+            /*printf("case STORED\n");*/
             BYTEBITS();                         /* go to byte boundary */
             NEEDBITS(32);
             if ((hold & 0xffff) != ((hold >> 16) ^ 0xffff)) {
