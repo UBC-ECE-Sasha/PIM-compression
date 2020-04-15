@@ -533,37 +533,6 @@ static int uncompress(char *in_file, char *output) {
     return 0;
 }
 
-static int uncompress_host(char *in_file, char *out_file)
-{
-	struct buffer_context input;
-	struct buffer_context output;
-
-	input.buffer = NULL;
-	input.length = 0;
-	input.max = 65535;
-
-	output.buffer = NULL;
-	output.length = 0;
-	output.max = MAX_OUTPUT_LENGTH;
-
-	if (read_input_host(in_file, &input)) {
-		return 1;
-	}
-
-	snappy_status status = snappy_uncompress_host(&input, &output);
-	if (status != SNAPPY_OK) {
-		fprintf(stderr, "encountered snappy error\n");
-		exit(EXIT_FAILURE);
-	}
-
-	if (write_output_host(out_file, &output)) {
-		return 1;
-	}
-
-	printf("uncompressed %u bytes to: %s\n", output.length, out_file);
-	return 0;
-}
-
 static void usage(const char* exe_name)
 {
 	fprintf(stderr, "usage: %s -i <compressed_input> (-o <output>)\n", exe_name);
@@ -578,6 +547,16 @@ int main(int argc, char **argv)
 	int use_dpu=0;
 	char *input_file=NULL;
 	char *output_file=NULL;
+	struct buffer_context input;
+	struct buffer_context output;
+
+	input.buffer = NULL;
+	input.length = 0;
+	input.max = 65535;
+
+	output.buffer = NULL;
+	output.length = 0;
+	output.max = MAX_OUTPUT_LENGTH;
 
 	printf("Getting options\n");
 	while ((opt = getopt(argc, argv, options)) != -1)
@@ -615,13 +594,33 @@ int main(int argc, char **argv)
 
 	if (output_file)
 	{
+		// read the input file into main memory
+		if (read_input_host(input_file, &input))
+			return 1;
+
 		if (use_dpu)
+		{
 			uncompress(input_file, output_file);
+		}
 		else
-			uncompress_host(input_file, output_file);
+		{
+			snappy_status status = snappy_uncompress_host(&input, &output);
+			if (status != SNAPPY_OK) {
+				fprintf(stderr, "encountered snappy error\n");
+				exit(EXIT_FAILURE);
+			}
+		}
+
+		// write the output buffer from main memory to a file
+		if (write_output_host(output_file, &output))
+			return 1;
+
+		printf("uncompressed %u bytes to: %s\n", output.length, output_file);
 	}
 	else
+	{
 		get_uncompressed_length(input_file);
+	}
 
 	return 0;
 }
