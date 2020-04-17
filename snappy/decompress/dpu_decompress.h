@@ -5,7 +5,8 @@
 #ifndef _DPU_DECOMPRESS_H_
 #define _DPU_DECOMPRESS_H_
 
-#include <stddef.h>
+//#include <stddef.h>
+#include "../dpu_snappy.h"
 
 /**
  * Uncompress a snappy compressed buffer. If successful, return 0 and write
@@ -16,18 +17,7 @@
  *     as dpu_uncompressed_length(compressed).
  * @return 0 if successful.
  */
-int dpu_uncompress(const char *compressed, size_t length, char *uncompressed,
-                   size_t *uncompressed_length);
-
-/**
- * Return the uncompressed length of the compressed file. If size can't be
- * parsed, return -1.
- * @param compressed Input buffer with the compressed data.
- * @param length Length of the compressed buffer.
- * @return 0 if successful.
- */
-int dpu_uncompressed_length(const char *compressed, size_t length,
-                            size_t *result);
+snappy_status dpu_uncompress(struct buffer_context *input, struct buffer_context *output);
 
 #endif
 
