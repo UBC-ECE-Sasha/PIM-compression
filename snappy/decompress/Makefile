@@ -1,5 +1,5 @@
 CC           = dpu-upmem-dpurte-clang
-CFLAGS       = -O2 -flto -g -fstack-size-section -Wall -Wextra -Werror -DSTACK_SIZE_DEFAULT=4096
+CFLAGS       = -O2 -flto -g -Wall
 
 SOURCES = dpu_task.c dpu_decompress.c
 DECOMPRESS_DPU = decompress.dpu
