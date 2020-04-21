@@ -10,6 +10,7 @@
 #ifndef Z_SOLO
 #  include "gzguts.h"
 #endif
+#include "dpu_common.h"
 
 z_const char * const z_errmsg[10] = {
     (z_const char *)"need dictionary",     /* Z_NEED_DICT       2  */
@@ -308,9 +309,19 @@ void* ZLIB_INTERNAL zcalloc (opaque, items, size)
     unsigned items;
     unsigned size;
 {
-    printf("Entered the zcalloc memory allocator\n");
+    printf("Entered the zcalloc memory allocator, requesting %d bytes\n", items * size);
     (void)opaque;
+    /*unsigned final_size = items * size;*/
+    /*unsigned current_memory_offset = mram_memory_index;*/
+    /*if ((mram_memory_index + final_size) > MRAM_MEMORY_SIZE) {*/
+        /*return 0;*/
+    /*} else {*/
+        /*mram_memory_index += final_size;*/
+        /*return &mram_memory[current_memory_offset];*/
+    /*}*/
+
     return buddy_alloc(items * size);
+
     /*return sizeof(uInt) > 2 ? (voidpf)malloc(items * size) :*/
                               /*(voidpf)calloc(items, size);*/
 }

@@ -238,6 +238,7 @@ unsigned short FAR *work;
         do {
             fill -= incr;
             /*printf("Setting value inside the next[] array\n");*/
+            printf("fill: %d\n", fill);
             next[(huff >> drop) + fill] = here;
         } while (fill != 0);
 

@@ -197,6 +197,7 @@ int DPU_decompress(FILE *source, FILE *dest, int level)
         break;
     }
 
+    fprintf(stdout, "DPU launch error code: %d\n", ret);
     DPU_ASSERT(ret);
 
     // copy data from DPU

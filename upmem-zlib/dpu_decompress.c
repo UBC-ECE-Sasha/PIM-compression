@@ -11,14 +11,15 @@
 
 #define BUFFER_SIZE (1 << 20)
 #define CACHE_SIZE (1 << 14)
-#define CHUNK 2048
+/*#define CHUNK 1024*/
+#define CHUNK 512
 
 // define host accessible variables
 __host uint32_t input_size;
 __host uint32_t result_size;
 __host uint8_t input[DPU_CACHE_SIZE];
 __host uint8_t output[DPU_CACHE_SIZE];
-__mram_noinit uint8_t DPU_BUFFER[DPU_BUFFER_SIZE];
+/*__mram_noinit uint8_t DPU_BUFFER[DPU_BUFFER_SIZE];*/
 __host int32_t ret;
 
 uint32_t bytes_read = 0;
