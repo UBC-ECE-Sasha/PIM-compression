@@ -91,6 +91,42 @@
 #  endif
 #endif
 
+/* Utility functions for copying the state->codes array */
+void copy_state_codes_next(struct inflate_state __mram_ptr *state)
+{
+    for (int i = 0; i < ENOUGH; i++) {
+        state->next[i] = state->codes[i];
+    }
+}
+
+void copy_state_codes_lencode(struct inflate_state __mram_ptr *state)
+{
+    for (int i = 0; i < ENOUGH; i++) {
+        state->next[i] = state->codes[i];
+    }
+}
+
+void copy_state_codes_distcode(struct inflate_state __mram_ptr *state)
+{
+    for (int i = 0; i < ENOUGH; i++) {
+        state->distcode[i] = state->codes[i];
+    }
+}
+
+void copy_state_next_distcode(struct inflate_state __mram_ptr *state)
+{
+    for (int i = 0; i < ENOUGH; i++) {
+        state->distcode[i] = state->next[i];
+    }
+}
+
+void copy_state_next_lencode(struct inflate_state __mram_ptr *state)
+{
+    for (int i = 0; i < ENOUGH; i++) {
+        state->lencode[i] = state->next[i];
+    }
+}
+
 /* function prototypes */
 local int inflateStateCheck OF((z_streamp strm));
 local void fixedtables OF((struct inflate_state FAR *state));
@@ -134,9 +170,9 @@ int inflateResetKeep(z_streamp strm)
     state->hold = 0;
     state->bits = 0;
     
-    // FIXME: Kinda need to uncomment these out
-    /*state->lencode = state->next = state->codes;*/
-    /*state->distcode = state->codes;*/
+    copy_state_codes_next(state);
+    copy_state_codes_distcode(state);
+    copy_state_next_lencode(state);
 
     state->sane = 1;
     state->back = -1;
@@ -316,9 +352,11 @@ struct inflate_state FAR __mram_ptr *state;
 #else /* !BUILDFIXED */
 #   include "inffixed.h"
 #endif /* BUILDFIXED */
-    state->lencode = lenfix;
+    /*state->lencode = lenfix;*/
+    copy_state_next_lencode(state);
     state->lenbits = 9;
-    state->distcode = distfix;
+    /*state->distcode = distfix;*/
+    copy_state_next_distcode(state);
     state->distbits = 5;
 }
 
@@ -623,12 +661,6 @@ unsigned copy;
    will return Z_BUF_ERROR if it has not reached the end of the stream.
  */
 
-void copy_state_next_codes(struct inflate_state __mram_ptr *state)
-{
-    for (int i = 0; i < ENOUGH; i++) {
-        state->next[i] = state->codes[i];
-    }
-}
 
 int inflate(z_streamp strm, int flush)
 {
@@ -829,8 +861,8 @@ int inflate(z_streamp strm, int flush)
             }
             while (state->have < 19)
                 state->lens[order[state->have++]] = 0;
-            copy_state_next_codes(state);
-            state->lencode = (const code FAR *)(state->next);
+            copy_state_codes_next(state);
+            copy_state_next_lencode(state);
             state->lenbits = 7;
             ret = inflate_table(CODES, state->lens, 19, &(state->next),
                                 &(state->lenbits), state->work);
@@ -906,8 +938,8 @@ int inflate(z_streamp strm, int flush)
             /* build code tables -- note: do not change the lenbits or distbits
                values here (9 and 6) without reading the comments in inftrees.h
                concerning the ENOUGH constants, which depend on those values */
-            copy_state_next_codes(state);
-            state->lencode = (const code FAR *)(state->next);
+            copy_state_codes_next(state);
+            copy_state_next_lencode(state);
             state->lenbits = 9;
 
             printf("reached inflate_table() 1\n");
@@ -919,7 +951,7 @@ int inflate(z_streamp strm, int flush)
                 state->mode = BAD;
                 break;
             }
-            state->distcode = (const code FAR *)(state->next);
+            copy_state_next_distcode(state);
             state->distbits = 6;
             printf("reached inflate_table() 2\n");
             ret = inflate_table(DISTS, state->lens + state->nlen, state->ndist,
@@ -1387,8 +1419,8 @@ z_streamp source;
     copy->strm = dest;
     if (state->lencode >= state->codes &&
         state->lencode <= state->codes + ENOUGH - 1) {
-        copy->lencode = copy->codes + (state->lencode - state->codes);
-        copy->distcode = copy->codes + (state->distcode - state->codes);
+        /*copy->lencode = copy->codes + (state->lencode - state->codes);*/
+        /*copy->distcode = copy->codes + (state->distcode - state->codes);*/
     }
     // FIXME: Since we don't need this function... COMMENT this trouble maker.
     /*copy->next = copy->codes + (state->next - state->codes);*/
