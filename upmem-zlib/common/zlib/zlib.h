@@ -89,7 +89,7 @@ typedef struct z_stream_s {
     uInt     avail_in;  /* number of bytes available at next_in */
     uLong    total_in;  /* total number of input bytes read so far */
 
-    Bytef    *next_out; /* next output byte will go here */
+    Bytef    __mram_ptr *next_out; /* next output byte will go here */
     uInt     avail_out; /* remaining free space at next_out */
     uLong    total_out; /* total number of bytes output so far */
 
@@ -1686,7 +1686,7 @@ ZEXTERN void ZEXPORT gzclearerr OF((gzFile file));
    library.
 */
 
-ZEXTERN uLong ZEXPORT adler32 OF((uLong adler, const Bytef *buf, uInt len));
+ZEXTERN uLong ZEXPORT adler32 OF((uLong adler, const Bytef __mram_ptr *buf, uInt len));
 /*
      Update a running Adler-32 checksum with the bytes buf[0..len-1] and
    return the updated checksum.  If buf is Z_NULL, this function returns the

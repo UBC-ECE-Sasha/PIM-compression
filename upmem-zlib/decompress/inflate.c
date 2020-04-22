@@ -91,6 +91,8 @@
 #  endif
 #endif
 
+#pragma clang optimize off
+
 /* Utility functions for copying the state->codes array */
 void copy_state_codes_next(struct inflate_state __mram_ptr *state)
 {
@@ -102,7 +104,7 @@ void copy_state_codes_next(struct inflate_state __mram_ptr *state)
 void copy_state_codes_lencode(struct inflate_state __mram_ptr *state)
 {
     for (int i = 0; i < ENOUGH; i++) {
-        state->next[i] = state->codes[i];
+        state->lencode[i] = state->codes[i];
     }
 }
 
@@ -126,6 +128,8 @@ void copy_state_next_lencode(struct inflate_state __mram_ptr *state)
         state->lencode[i] = state->next[i];
     }
 }
+
+#pragma clang optimize on
 
 /* function prototypes */
 local int inflateStateCheck OF((z_streamp strm));
@@ -221,7 +225,7 @@ int windowBits;
     if (windowBits && (windowBits < 8 || windowBits > 15))
         return Z_STREAM_ERROR;
     if (state->window != Z_NULL && state->wbits != (unsigned)windowBits) {
-        ZFREE(strm, state->window);
+        zcfree(strm->opaque, state->window);
         state->window = Z_NULL;
     }
 
@@ -437,17 +441,18 @@ void makefixed()
  */
 local int updatewindow(strm, end, copy)
 z_streamp strm;
-const Bytef *end;
+const Bytef __mram_ptr *end;
 unsigned copy;
 {
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
     unsigned dist;
 
-    state = (struct inflate_state FAR *)strm->state;
+    state = (struct inflate_state FAR __mram_ptr *)strm->state;
 
     /* if it hasn't been done already, allocate space for the window */
     if (state->window == Z_NULL) {
-        state->window = (unsigned char FAR *)
+        //FIXME: This is going to get me in trouble
+        state->window = (unsigned char FAR __mram_ptr *)
                         ZALLOC(strm, 1U << state->wbits,
                                sizeof(unsigned char));
         if (state->window == Z_NULL) return 1;
@@ -667,13 +672,13 @@ int inflate(z_streamp strm, int flush)
     printf("Enter inflate 1 function\n");
     struct inflate_state FAR __mram_ptr *state;
     z_const unsigned char FAR *next;    /* next input */
-    unsigned char FAR *put;     /* next output */
+    unsigned char FAR __mram_ptr *put;     /* next output */
     unsigned have, left;        /* available input and output */
     unsigned long hold;         /* bit buffer */
     unsigned bits;              /* bits in bit buffer */
     unsigned in, out;           /* save starting available input and output */
     unsigned copy;              /* number of stored or match bytes to copy */
-    unsigned char FAR *from;    /* where to copy match bytes from */
+    unsigned char FAR __mram_ptr *from;    /* where to copy match bytes from */
     code here;                  /* current decoding table entry */
     code last;                  /* parent table entry */
     unsigned len;               /* length to copy for repeats, bits to drop */
@@ -1203,12 +1208,12 @@ int inflate(z_streamp strm, int flush)
 int ZEXPORT inflateEnd(strm)
 z_streamp strm;
 {
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
     if (inflateStateCheck(strm))
         return Z_STREAM_ERROR;
-    state = (struct inflate_state FAR *)strm->state;
-    if (state->window != Z_NULL) ZFREE(strm, state->window);
-    ZFREE(strm, strm->state);
+    state = (struct inflate_state FAR __mram_ptr *)strm->state;
+    if (state->window != Z_NULL) zcfree(strm->opaque, state->window);
+    zcfree(strm->opaque, strm->state);
     strm->state = Z_NULL;
     Tracev((stderr, "inflate: end\n"));
     return Z_OK;
@@ -1239,7 +1244,7 @@ uInt *dictLength;
 
 int ZEXPORT inflateSetDictionary(strm, dictionary, dictLength)
 z_streamp strm;
-const Bytef *dictionary;
+const Bytef __mram_ptr *dictionary;
 uInt dictLength;
 {
     struct inflate_state FAR *state;
@@ -1428,7 +1433,7 @@ z_streamp source;
         wsize = 1U << state->wbits;
         zmemcpy(window, state->window, wsize);
     }
-    copy->window = window;
+    /*copy->window = window;*/
     dest->state = (__mram_ptr struct internal_state FAR *)copy;
     return Z_OK;
 }
