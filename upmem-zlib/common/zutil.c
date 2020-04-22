@@ -8,7 +8,7 @@
 #include "zutil.h"
 #include <alloc.h>
 #ifndef Z_SOLO
-#  include "gzguts.h"
+/*#  include "gzguts.h"*/
 #endif
 #include "dpu_common.h"
 
@@ -304,23 +304,27 @@ extern voidp  calloc OF((uInt items, uInt size));
 extern void   free   OF((voidpf ptr));
 #endif
 
-void* ZLIB_INTERNAL zcalloc (opaque, items, size)
+void __mram_ptr* ZLIB_INTERNAL zcalloc (opaque, items, size)
     voidpf opaque;
     unsigned items;
     unsigned size;
 {
     printf("Entered the zcalloc memory allocator, requesting %d bytes\n", items * size);
     (void)opaque;
-    /*unsigned final_size = items * size;*/
-    /*unsigned current_memory_offset = mram_memory_index;*/
-    /*if ((mram_memory_index + final_size) > MRAM_MEMORY_SIZE) {*/
-        /*return 0;*/
-    /*} else {*/
-        /*mram_memory_index += final_size;*/
-        /*return &mram_memory[current_memory_offset];*/
-    /*}*/
 
-    return buddy_alloc(items * size);
+    unsigned final_size = items * size;
+    unsigned current_memory_offset = mram_memory_index;
+    if ((mram_memory_index + final_size) > MRAM_MEMORY_SIZE) {
+        return 0;
+    } else {
+        mram_memory_index += final_size;
+        return &mram_memory[current_memory_offset];
+    }
+
+    /*void __mram_ptr* ptr;*/
+    /*return ptr;*/
+
+    /*return buddy_alloc(items * size);*/
 
     /*return sizeof(uInt) > 2 ? (voidpf)malloc(items * size) :*/
                               /*(voidpf)calloc(items, size);*/

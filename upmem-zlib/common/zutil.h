@@ -19,7 +19,8 @@
 #  define ZLIB_INTERNAL
 #endif
 
-#include "zlib.h"
+#include <mram.h>
+#include "zlib/zlib.h"
 
 #if defined(STDC) && !defined(Z_SOLO)
 #  if !(defined(_WIN32_WCE) && defined(_MSC_VER))
@@ -254,7 +255,7 @@ extern z_const char * const z_errmsg[10]; /* indexed by 2-zlib_error */
 #endif
 
 #ifndef Z_SOLO
-   void* ZLIB_INTERNAL zcalloc OF((voidpf opaque, unsigned items,
+   void __mram_ptr* ZLIB_INTERNAL zcalloc OF((voidpf opaque, unsigned items,
                                     unsigned size));
    void ZLIB_INTERNAL zcfree  OF((voidpf opaque, void *ptr));
 #endif

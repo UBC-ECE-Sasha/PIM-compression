@@ -105,11 +105,11 @@ local unsigned syncsearch OF((unsigned FAR *have, const unsigned char FAR *buf,
 local int inflateStateCheck(strm)
 z_streamp strm;
 {
-    struct inflate_state FAR *state;
+    __mram_ptr struct inflate_state FAR *state;
     if (strm == Z_NULL ||
         strm->zalloc == (alloc_func)0 || strm->zfree == (free_func)0)
         return 1;
-    state = (struct inflate_state FAR *)strm->state;
+    state = (__mram_ptr struct inflate_state FAR *)strm->state;
     if (state == Z_NULL || state->strm != strm ||
         state->mode < HEAD || state->mode > SYNC)
         return 1;
@@ -118,10 +118,10 @@ z_streamp strm;
 
 int inflateResetKeep(z_streamp strm)
 {
-    struct inflate_state FAR *state;
+    __mram_ptr struct inflate_state FAR *state;
 
     if (inflateStateCheck(strm)) return Z_STREAM_ERROR;
-    state = (struct inflate_state FAR *)strm->state;
+    state = (__mram_ptr struct inflate_state FAR *)strm->state;
     strm->total_in = strm->total_out = state->total = 0;
     strm->msg = Z_NULL;
     if (state->wrap)        /* to support ill-conceived Java test suite */
@@ -133,7 +133,8 @@ int inflateResetKeep(z_streamp strm)
     state->head = Z_NULL;
     state->hold = 0;
     state->bits = 0;
-    state->lencode = state->distcode = state->next = state->codes;
+    state->lencode = state->next = state->codes;
+    state->distcode = state->codes;
     state->sane = 1;
     state->back = -1;
     Tracev((stderr, "inflate: reset\n"));
@@ -198,7 +199,7 @@ const char *version;
 int stream_size;
 {
     int ret;
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
 
     if (version == Z_NULL || version[0] != ZLIB_VERSION[0] ||
         stream_size != (int)(sizeof(z_stream)))
@@ -220,12 +221,12 @@ int stream_size;
         strm->zfree = zcfree;
 #endif
     printf("sizeof struct inflate_state: %d\n", sizeof(struct inflate_state));
-    state = (struct inflate_state FAR *)
+    state = (struct inflate_state FAR __mram_ptr *)
             ZALLOC(strm, 1, sizeof(struct inflate_state));
     printf("pointer of the state pointer: 0x%x\n", state);
     if (state == Z_NULL) return Z_MEM_ERROR;
     Tracev((stderr, "inflate: allocated\n"));
-    strm->state = (struct internal_state FAR *)state;
+    strm->state = (struct internal_state FAR __mram_ptr *)state;
     state->strm = strm;
     state->window = Z_NULL;
     state->mode = HEAD;     /* to pass state test in inflateReset2() */
@@ -1382,7 +1383,7 @@ z_streamp source;
         zmemcpy(window, state->window, wsize);
     }
     copy->window = window;
-    dest->state = (struct internal_state FAR *)copy;
+    dest->state = (__mram_ptr struct internal_state FAR *)copy;
     return Z_OK;
 }
 

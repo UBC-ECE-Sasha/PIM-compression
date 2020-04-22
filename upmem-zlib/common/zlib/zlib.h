@@ -32,6 +32,7 @@
 #define ZLIB_H
 
 #include "zconf.h"
+#include <mram.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,7 +94,7 @@ typedef struct z_stream_s {
     uLong    total_out; /* total number of bytes output so far */
 
     z_const char *msg;  /* last error message, NULL if no error */
-    struct internal_state FAR *state; /* not visible by applications */
+    __mram_ptr struct internal_state FAR *state; /* not visible by applications */
 
     alloc_func zalloc;  /* used to allocate the internal state */
     free_func  zfree;   /* used to free the internal state */
@@ -105,7 +106,7 @@ typedef struct z_stream_s {
     uLong   reserved;   /* reserved for future use */
 } z_stream;
 
-typedef z_stream FAR *z_streamp;
+typedef __mram_ptr z_stream FAR *z_streamp;
 
 /*
      gzip header information passed to and from zlib routines.  See RFC 1952
