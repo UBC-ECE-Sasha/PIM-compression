@@ -133,8 +133,11 @@ int inflateResetKeep(z_streamp strm)
     state->head = Z_NULL;
     state->hold = 0;
     state->bits = 0;
-    state->lencode = state->next = state->codes;
-    state->distcode = state->codes;
+    
+    // FIXME: Kinda need to uncomment these out
+    /*state->lencode = state->next = state->codes;*/
+    /*state->distcode = state->codes;*/
+
     state->sane = 1;
     state->back = -1;
     Tracev((stderr, "inflate: reset\n"));
@@ -144,10 +147,10 @@ int inflateResetKeep(z_streamp strm)
 int ZEXPORT inflateReset(strm)
 z_streamp strm;
 {
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
 
     if (inflateStateCheck(strm)) return Z_STREAM_ERROR;
-    state = (struct inflate_state FAR *)strm->state;
+    state = (struct inflate_state FAR __mram_ptr *)strm->state;
     state->wsize = 0;
     state->whave = 0;
     state->wnext = 0;
@@ -159,11 +162,11 @@ z_streamp strm;
 int windowBits;
 {
     int wrap;
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
 
     /* get the state */
     if (inflateStateCheck(strm)) return Z_STREAM_ERROR;
-    state = (struct inflate_state FAR *)strm->state;
+    state = (struct inflate_state FAR __mram_ptr *)strm->state;
 
     /* extract wrap request from windowBits parameter */
     if (windowBits < 0) {
@@ -221,8 +224,9 @@ int stream_size;
         strm->zfree = zcfree;
 #endif
     printf("sizeof struct inflate_state: %d\n", sizeof(struct inflate_state));
-    state = (struct inflate_state FAR __mram_ptr *)
-            ZALLOC(strm, 1, sizeof(struct inflate_state));
+    /*state = (struct inflate_state FAR __mram_ptr *) ZALLOC(strm, 1, sizeof(struct inflate_state));*/
+    void __mram_ptr *ptr = zcalloc(strm->opaque, 1, sizeof(struct inflate_state));
+    state = (struct inflate_state FAR __mram_ptr *)ptr; 
     printf("pointer of the state pointer: 0x%x\n", state);
     if (state == Z_NULL) return Z_MEM_ERROR;
     Tracev((stderr, "inflate: allocated\n"));
@@ -232,7 +236,8 @@ int stream_size;
     state->mode = HEAD;     /* to pass state test in inflateReset2() */
     ret = inflateReset2(strm, windowBits);
     if (ret != Z_OK) {
-        ZFREE(strm, state);
+        /*ZFREE(strm, state);*/
+        zcfree(strm->opaque, state);
         strm->state = Z_NULL;
     }
     return ret;
@@ -248,10 +253,10 @@ z_streamp strm;
 int bits;
 int value;
 {
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
 
     if (inflateStateCheck(strm)) return Z_STREAM_ERROR;
-    state = (struct inflate_state FAR *)strm->state;
+    state = (struct inflate_state FAR __mram_ptr *)strm->state;
     if (bits < 0) {
         state->hold = 0;
         state->bits = 0;
@@ -275,7 +280,7 @@ int value;
    may not be thread-safe.
  */
 local void fixedtables(state)
-struct inflate_state FAR *state;
+struct inflate_state FAR __mram_ptr *state;
 {
 #ifdef BUILDFIXED
     static int virgin = 1;
@@ -618,10 +623,17 @@ unsigned copy;
    will return Z_BUF_ERROR if it has not reached the end of the stream.
  */
 
+void copy_state_next_codes(struct inflate_state __mram_ptr *state)
+{
+    for (int i = 0; i < ENOUGH; i++) {
+        state->next[i] = state->codes[i];
+    }
+}
+
 int inflate(z_streamp strm, int flush)
 {
     printf("Enter inflate 1 function\n");
-    struct inflate_state FAR *state;
+    struct inflate_state FAR __mram_ptr *state;
     z_const unsigned char FAR *next;    /* next input */
     unsigned char FAR *put;     /* next output */
     unsigned have, left;        /* available input and output */
@@ -645,7 +657,7 @@ int inflate(z_streamp strm, int flush)
         (strm->next_in == Z_NULL && strm->avail_in != 0))
         return Z_STREAM_ERROR;
 
-    state = (struct inflate_state FAR *)strm->state;
+    state = (struct inflate_state FAR __mram_ptr *)strm->state;
     if (state->mode == TYPE) state->mode = TYPEDO;      /* skip check */
     LOAD();
     printf("Finished load operation\n");
@@ -817,7 +829,7 @@ int inflate(z_streamp strm, int flush)
             }
             while (state->have < 19)
                 state->lens[order[state->have++]] = 0;
-            state->next = state->codes;
+            copy_state_next_codes(state);
             state->lencode = (const code FAR *)(state->next);
             state->lenbits = 7;
             ret = inflate_table(CODES, state->lens, 19, &(state->next),
@@ -894,7 +906,7 @@ int inflate(z_streamp strm, int flush)
             /* build code tables -- note: do not change the lenbits or distbits
                values here (9 and 6) without reading the comments in inftrees.h
                concerning the ENOUGH constants, which depend on those values */
-            state->next = state->codes;
+            copy_state_next_codes(state);
             state->lencode = (const code FAR *)(state->next);
             state->lenbits = 9;
 
@@ -1344,6 +1356,7 @@ int ZEXPORT inflateCopy(dest, source)
 z_streamp dest;
 z_streamp source;
 {
+    /* We don't really need this function.... */
     struct inflate_state FAR *state;
     struct inflate_state FAR *copy;
     unsigned char FAR *window;
@@ -1377,7 +1390,8 @@ z_streamp source;
         copy->lencode = copy->codes + (state->lencode - state->codes);
         copy->distcode = copy->codes + (state->distcode - state->codes);
     }
-    copy->next = copy->codes + (state->next - state->codes);
+    // FIXME: Since we don't need this function... COMMENT this trouble maker.
+    /*copy->next = copy->codes + (state->next - state->codes);*/
     if (window != Z_NULL) {
         wsize = 1U << state->wbits;
         zmemcpy(window, state->window, wsize);

@@ -332,10 +332,11 @@ void __mram_ptr* ZLIB_INTERNAL zcalloc (opaque, items, size)
 
 void ZLIB_INTERNAL zcfree (opaque, ptr)
     voidpf opaque;
-    void *ptr;
+    void __mram_ptr *ptr;
 {
     (void)opaque;
-    buddy_free(ptr);
+    (void)ptr;
+    /*buddy_free(ptr);*/
     /*free(ptr);*/
 }
 

@@ -94,7 +94,7 @@ typedef struct z_stream_s {
     uLong    total_out; /* total number of bytes output so far */
 
     z_const char *msg;  /* last error message, NULL if no error */
-    __mram_ptr struct internal_state FAR *state; /* not visible by applications */
+    struct internal_state FAR __mram_ptr *state; /* not visible by applications */
 
     alloc_func zalloc;  /* used to allocate the internal state */
     free_func  zfree;   /* used to free the internal state */
