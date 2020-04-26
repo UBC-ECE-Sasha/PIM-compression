@@ -8,8 +8,6 @@
 #include "dpu_snappy.h"
 #include "decompress/dpu_decompress.h"
 
-#define DEBUG 1
-
 #define DPU_DECOMPRESS_PROGRAM "decompress/decompress.dpu"
 #define MAX_OUTPUT_LENGTH 16384
 
