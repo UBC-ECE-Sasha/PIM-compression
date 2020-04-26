@@ -21,7 +21,6 @@
 
 static uint16_t make_offset_1_byte(unsigned char tag, struct buffer_context *input)
 {
-	//printf("%s\n", __func__);
 	if (input->curr >= input->buffer + input->length)
 		return 0;
 	return (uint16_t)((unsigned char)*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
@@ -131,28 +130,24 @@ void write_copy_dpu(struct buffer_context *output, uint32_t copy_length, uint32_
 
 snappy_status dpu_uncompress(struct buffer_context *input, struct buffer_context *output)
 {
-	printf("%s\n", __func__);
-
 	while (input->curr < (input->buffer + input->length))
 	{
 		uint16_t length;
 		uint32_t offset;
 		const unsigned char tag = *input->curr++;
-		//printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - input->buffer - 1);
+		dbg_printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - input->buffer - 1);
 
-	/* There are two types of elements in a Snappy stream: Literals and
-		copies (backreferences). Each element starts with a tag byte,
-		and the lower two bits of this tag byte signal what type of element
-		will follow. */
+		// There are two types of elements in a Snappy stream: Literals and
+		// copies (backreferences). Each element starts with a tag byte,
+		// and the lower two bits of this tag byte signal what type of element
+		// will follow.
 		switch (GET_ELEMENT_TYPE(tag))
 		{
 		case EL_TYPE_LITERAL:
-			/* For literals up to and including 60 bytes in length, the upper
-				six bits of the tag byte contain (len-1). The literal follows
-				immediately thereafter in the bytestream. */
+			// For literals up to and including 60 bytes in length, the upper
+			// six bits of the tag byte contain (len-1). The literal follows
+			// immediately thereafter in the bytestream.
 			length = GET_LITERAL_LENGTH(tag) + 1;
-			//printf("reading literal length=%u\n", length);
-
 			if (length > 60)
 				length = read_long_literal_size(input, length - 60) + 1;
 
@@ -166,11 +161,11 @@ snappy_status dpu_uncompress(struct buffer_context *input, struct buffer_context
 			}
 			break;
 
-			/* Copies are references back into previous decompressed data, telling
-				the decompressor to reuse data it has previously decoded.
-				They encode two values: The _offset_, saying how many bytes back
-				from the current position to read, and the _length_, how many bytes
-				to copy. */
+			// Copies are references back into previous decompressed data, telling
+			// the decompressor to reuse data it has previously decoded.
+			// They encode two values: The _offset_, saying how many bytes back
+			// from the current position to read, and the _length_, how many bytes
+			// to copy.
 		case EL_TYPE_COPY_1:
 			length = GET_LENGTH_1_BYTE(tag) + 4;
 			offset = make_offset_1_byte(tag, input);

@@ -12,7 +12,6 @@
 #define MAX_OUTPUT_LENGTH 16384
 
 #define BUF_SIZE (1 << 10)
-#define ALIGN(x) (x + 3) & ~3
 
 const char options[]="di:o:";
 
@@ -284,15 +283,21 @@ snappy_status snappy_uncompress_dpu(struct buffer_context *input, struct buffer_
 	DPU_ASSERT(dpu_copy_to(dpu, DPU_MRAM_HEAP_POINTER_NAME, 0, input->buffer, input->length));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, &offset, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output->length, sizeof(uint32_t)));
-	dpu_launch(dpu, DPU_SYNCHRONOUS);
+	int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
+
+	if (ret != 0)
+	{
+		DPU_ASSERT(dpu_free(dpus));
+		return SNAPPY_INVALID_INPUT;
+	}
 
 	/* get the results back from the DPU */
 	DPU_ASSERT(dpu_copy_from(dpu, DPU_MRAM_HEAP_POINTER_NAME, 0, output->buffer, output->length));
 
 	// Uncompressed size might be too big to read back to host.
 	if (res_size > BUF_SIZE) {
-		fprintf(stderr, "uncompressed file is too big (%ld > %d)\n", 
-		res_size, BUF_SIZE);
+		printf("uncompressed file is too big (%ld > %d)\n",
+			res_size, BUF_SIZE);
 		exit(EXIT_FAILURE);
 	}
 

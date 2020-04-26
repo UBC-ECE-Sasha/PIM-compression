@@ -5,8 +5,15 @@
 #ifndef _DPU_DECOMPRESS_H_
 #define _DPU_DECOMPRESS_H_
 
-//#include <stddef.h>
 #include "../dpu_snappy.h"
+
+#ifdef DEBUG
+#define dbg_printf(M, ...) printf("%s: " M , __func__, ##__VA_ARGS__)
+#else
+#define dbg_printf(...)
+#endif
+
+#define ALIGN(_p, _width) ((unsigned int)_p + (_width-1) & (0-_width))
 
 /**
  * Uncompress a snappy compressed buffer. If successful, return 0 and write
