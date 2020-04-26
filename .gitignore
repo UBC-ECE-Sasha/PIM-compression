@@ -1,2 +1,3 @@
+*.swp
 *.dpu
-decompress_host
+tags
