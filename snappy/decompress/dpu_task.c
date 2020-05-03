@@ -43,7 +43,7 @@ int main()
 
 	// copy the input buffer to WRAM
 	dbg_printf("Copying %u from MRAM: 0x%x to WRAM: 0x%x\n", MAX_LENGTH, DPU_MRAM_HEAP_POINTER, (unsigned int)input.buffer);
-	MRAM_READ(DPU_MRAM_HEAP_POINTER, input.buffer, MAX_LENGTH);
+	mram_read(DPU_MRAM_HEAP_POINTER, input.buffer, MAX_LENGTH);
 
 	// Do the uncompress
 	if (dpu_uncompress(&input, &output))
@@ -53,7 +53,7 @@ int main()
 	}
 
 	// copy the input buffer to WRAM
-	MRAM_WRITE(output.buffer, DPU_MRAM_HEAP_POINTER, MAX_LENGTH);
+	mram_write(output.buffer, DPU_MRAM_HEAP_POINTER, MAX_LENGTH);
 
 	printf("Completed in %ld cycles\n", perfcounter_get());
 	return 0;

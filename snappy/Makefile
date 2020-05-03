@@ -28,4 +28,4 @@ decompress_host: $(SOURCE)
 	$(CC) $(CFLAGS) $^ -o $@ $(DPU_OPTS)
 
 tags:
-	ctags -R -f tags . /usr/include/dpu
+	ctags -R -f tags . /usr/share/upmem/include
