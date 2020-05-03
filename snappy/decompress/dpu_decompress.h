@@ -15,6 +15,14 @@
 
 #define ALIGN(_p, _width) ((unsigned int)_p + (_width-1) & (0-_width))
 
+typedef struct buffer_context
+{
+	char* buffer;
+	char* curr;
+	uint32_t length;
+	uint32_t max;
+} buffer_context;
+
 /**
  * Uncompress a snappy compressed buffer. If successful, return 0 and write
  * the size of the uncompressed contents to uncompressed_length.

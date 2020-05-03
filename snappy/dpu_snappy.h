@@ -3,6 +3,7 @@
 
 #define UNUSED(_x) (_x=_x)
 #define BITMASK(_x) ((1 << _x) - 1)
+#define MIN(_a, _b) (_a < _b ? _a : _b)
 
 #define GET_ELEMENT_TYPE(_tag) (_tag & BITMASK(2))
 #define GET_LITERAL_LENGTH(_tag) (_tag >> 2)
@@ -23,14 +24,6 @@ typedef enum {
 } snappy_status;
 
 
-typedef struct buffer_context
-{
-	char* buffer;
-	char* curr;
-	uint32_t length;
-	uint32_t max;
-} buffer_context;
-
 enum element_type
 {
 	EL_TYPE_LITERAL,
@@ -38,6 +31,17 @@ enum element_type
 	EL_TYPE_COPY_2,
 	EL_TYPE_COPY_4
 };
+
+#define OUT_BUFFER_FLAG_DIRTY	(1<<0)
+
+typedef struct host_buffer_context
+{
+	char* ptr;
+	char* buffer;
+	char* curr;
+	uint32_t length;
+	uint32_t max;
+} host_buffer_context;
 
 #endif  /* _DPU_SNAPPY_H_ */
 
