@@ -8,76 +8,82 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <mram.h>
 
 #include "dpu_decompress.h"
 
 /***********************
  * Struct declarations *
  ***********************/
+static char READ_BYTE(struct in_buffer_context *_i)
+{
+	_i->ptr = seqread_get(_i->ptr, sizeof(uint8_t), &_i->sr);
+	_i->curr++;
+	return *_i->ptr;
+}
+
 
 /*******************
  * Memory helpers  *
  *******************/
 
-static uint16_t make_offset_1_byte(unsigned char tag, struct buffer_context *input)
+static uint16_t make_offset_1_byte(unsigned char tag, struct in_buffer_context *input)
 {
-	if (input->curr >= input->buffer + input->length)
+	if (input->curr >= input->length)
 		return 0;
-	return (uint16_t)((unsigned char)*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
+	return (uint16_t)(READ_BYTE(input)) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
 }
 
-static uint16_t make_offset_2_byte(unsigned char tag, struct buffer_context *input)
+static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *input)
 {
 	//printf("%s\n", __func__);
-	unsigned char c;
+	uint32_t total;
 	UNUSED(tag);
-	uint16_t total=0;
-	if (input->curr >= input->buffer + input->length)
+
+	if (input->curr >= input->length)
 		return 0;
-	c = *input->curr++;
-	total |= c;
-	if (input->curr >= input->buffer + input->length)
+	total = READ_BYTE(input);
+	if (input->curr >= input->length)
 		return 0;
-	c = *input->curr++;
-	return total | c << 8;
+	return total | READ_BYTE(input) << 8;
 }
 
-static uint32_t make_offset_4_byte(unsigned char tag, struct buffer_context *input)
+static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *input)
 {
 	printf("%s\n", __func__);
 	uint32_t total;
 	UNUSED(tag);
-	const char *limit = input->buffer + input->length;
-	if (input->curr >= limit)
+
+	if (input->curr >= input->length)
 		return 0;
-	total = *input->curr++;
-	if (input->curr >= limit)
+	total = READ_BYTE(input);
+	if (input->curr >= input->length)
 		return 0;
-	total |= (*input->curr++) << 8;
-	if (input->curr >= limit)
+	total |= READ_BYTE(input) << 8;
+	if (input->curr >= input->length)
 		return 0;
-	total |= (*input->curr++) << 16;
-	if (input->curr >= limit)
+	total |= READ_BYTE(input) << 16;
+	if (input->curr >= input->length)
 		return 0;
-	return total | (*input->curr++) << 24;
+	return total | READ_BYTE(input) << 24;
 }
 
 /***************************
  * Reader & writer helpers *
  ***************************/
 
-uint32_t read_long_literal_size(struct buffer_context *input, uint32_t len)
+uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 {
 	uint32_t size = 0;
 	int shift = 0;
-	const char *limit = input->buffer + input->length;
+	uint32_t limit = input->length;
 
-	//printf("reading long literal in %u bytes\n", len);
+	printf("reading long literal in %u bytes\n", len);
 	while (len--)
 	{
 		if (input->curr >= limit)
 			return 0;
-		char c = (*input->curr++);
+		char c = READ_BYTE(input);
 		size |= c << shift;
 		shift += 8;
 	}
@@ -85,15 +91,14 @@ uint32_t read_long_literal_size(struct buffer_context *input, uint32_t len)
 	return size;
 }
 
-static inline bool writer_append_dpu(struct buffer_context *input, struct buffer_context *output, uint32_t *len)
+static inline bool writer_append_dpu(struct in_buffer_context *input, struct buffer_context *output, uint32_t *len)
 {
 	//printf("Writing %u bytes\n", *len);
 	while (*len &&
-		input->curr < (input->buffer + input->length) &&
+		input->curr < (input->length) &&
 		output->curr < (output->buffer + output->length))
 	{
-		*output->curr = *input->curr;
-		input->curr++;
+		*output->curr = READ_BYTE(input);
 		output->curr++;
 		(*len) -= 1;
 	}
@@ -128,15 +133,16 @@ void write_copy_dpu(struct buffer_context *output, uint32_t copy_length, uint32_
  * Public functions  *
  *********************/
 
-snappy_status dpu_uncompress(struct buffer_context *input, struct buffer_context *output)
+snappy_status dpu_uncompress(struct in_buffer_context *input, struct buffer_context *output)
 {
-	while (input->curr < (input->buffer + input->length))
+	dbg_printf("curr: %u length: %u\n", input->curr, input->length);
+	while (input->curr != input->length) // less-than doesn't work!
 	{
 		uint16_t length;
 		uint32_t offset;
-		const unsigned char tag = *input->curr++;
-		dbg_printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - input->buffer - 1);
-
+		unsigned char tag;
+		tag = READ_BYTE(input);
+		dbg_printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - 1);
 		// There are two types of elements in a Snappy stream: Literals and
 		// copies (backreferences). Each element starts with a tag byte,
 		// and the lower two bits of this tag byte signal what type of element
@@ -153,7 +159,7 @@ snappy_status dpu_uncompress(struct buffer_context *input, struct buffer_context
 
 			uint32_t remaining = length;
 			while (remaining &&
-				input->curr < (input->buffer + input->length) &&
+				input->curr < (input->length) &&
 				output->curr < (output->buffer + output->length))
 			{
 				if (!writer_append_dpu(input, output, &remaining))

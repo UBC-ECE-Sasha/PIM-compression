@@ -6,6 +6,7 @@
 #define _DPU_DECOMPRESS_H_
 
 #include "../dpu_snappy.h"
+#include <seqread.h> // sequential reader
 
 #ifdef DEBUG
 #define dbg_printf(M, ...) printf("%s: " M , __func__, ##__VA_ARGS__)
@@ -14,6 +15,16 @@
 #endif
 
 #define ALIGN(_p, _width) ((unsigned int)_p + (_width-1) & (0-_width))
+
+typedef struct in_buffer_context
+{
+	char* ptr;
+	seqreader_buffer_t cache;
+	seqreader_t sr;
+	uint32_t curr;
+	uint32_t length;
+	uint32_t max;
+} in_buffer_context;
 
 typedef struct buffer_context
 {
@@ -32,7 +43,7 @@ typedef struct buffer_context
  *     as dpu_uncompressed_length(compressed).
  * @return 0 if successful.
  */
-snappy_status dpu_uncompress(struct buffer_context *input, struct buffer_context *output);
+snappy_status dpu_uncompress(struct in_buffer_context *input, struct buffer_context *output);
 
 #endif
 
