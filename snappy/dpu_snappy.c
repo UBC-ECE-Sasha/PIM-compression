@@ -42,7 +42,7 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 	if (!read_uncompressed_length_host(input, &uncompressed_length))
 	{
 		printf("read uncompressed length failed\n");
-      return SNAPPY_BUFFER_TOO_SMALL;
+        return SNAPPY_BUFFER_TOO_SMALL;
 	}
 
 	if (uncompressed_length > output->max)
@@ -97,33 +97,6 @@ static uint32_t make_offset_4_byte(unsigned char tag, struct host_buffer_context
 	if (input->curr >= limit)
 		return 0;
 	return total | (*input->curr++) << 24;
-}
-
-static int read_input_host(char *in_file, struct host_buffer_context *input)
-{
-	size_t input_size;
-    FILE *fin = fopen(in_file, "r");
-    fseek(fin, 0, SEEK_END);
-    input_size = ftell(fin);
-    fseek(fin, 0, SEEK_SET);
-
-    if (input->length > input->max) {
-        fprintf(stderr, "input_size is too big (%d > %d)\n",
-                input->length, input->max);
-        return 1;
-    }
-
-	input->length = input_size;
-	input->buffer = malloc(input->length);
-	input->curr = input->buffer;
-	size_t n = fread(input->buffer, 1, input->length, fin);
-	fclose(fin);
-
-#if DEBUG
-    printf("%s: read %d bytes from %s (%lu)\n", __func__, input->length, in_file, n);
-#endif
-
-   return (n != input->length);
 }
 
 static inline bool writer_append_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t *len)
@@ -189,7 +162,7 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
 		const unsigned char tag = *input->curr++;
 		//printf("Got tag byte 0x%x at index 0x%lx\n", tag, input->curr - input->buffer - 1);
 
-	/* There are two types of elements in a Snappy stream: Literals and
+	    /* There are two types of elements in a Snappy stream: Literals and
 		copies (backreferences). Each element starts with a tag byte,
 		and the lower two bits of this tag byte signal what type of element
 		will follow. */
@@ -258,8 +231,9 @@ snappy_status snappy_compress(const char* input,
     return SNAPPY_OK;
 }
 
-/* Prepare the DPU context by copying the buffer to be decompressed and
-	uploading the program to the DPU
+/**
+ * Prepare the DPU context by copying the buffer to be decompressed and
+ * uploading the program to the DPU.
  */
 snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output)
 {
@@ -315,40 +289,6 @@ size_t snappy_max_compressed_length(size_t source_length) {
     return 0;
 }
 
-snappy_status snappy_uncompressed_length(const char *compressed,
-                                         size_t compressed_length,
-                                         size_t *result)
-{
-    struct dpu_set_t dpus;
-    struct dpu_set_t dpu;
-    uint64_t res_size;
-
-    DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
-
-    DPU_FOREACH(dpus, dpu) {
-        break;
-    }
-
-    DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
-    DPU_ASSERT(dpu_copy_to(dpu, "compressed_length", 0, &compressed_length, 
-                           sizeof(compressed_length)));
-    DPU_ASSERT(dpu_copy_to(dpu, "compressed", 0, compressed, 
-                          (compressed_length + 3) & ~3));
-    DPU_ASSERT(dpu_launch(dpu, DPU_SYNCHRONOUS));
-
-    DPU_ASSERT(dpu_copy_from(dpu, "uncompressed_length", 0, &res_size, 
-                             sizeof(res_size)));
-
-    DPU_FOREACH(dpus, dpu) {
-        DPU_ASSERT(dpu_log_read(dpu, stdout));
-    }
-
-    DPU_ASSERT(dpu_free(dpus));
-
-    *result = res_size;
-    return SNAPPY_OK;
-}
-
 snappy_status snappy_validate_compressed_buffer(const char *compressed,
                                                 size_t compressed_length) {
     // TODO
@@ -359,32 +299,38 @@ snappy_status snappy_validate_compressed_buffer(const char *compressed,
 
 /**
  * Read the contents of a file into an in-memory buffer. Upon success,
- * return 0 and write the amount read to input_size.
- * @param input The input filename.
- * @param input_buf The buffer to write the contents to.
- * @param input_size Size of input.
+ * return 0 and write the amount read to input->length.
+ * @param in_file The input filename.
+ * @param input The struct to which contents of file are written to.
  */
-static int read_input(char *in_file, char *input_buf, size_t *input_size) {
+static int read_input_host(char *in_file, struct host_buffer_context *input)
+{
     FILE *fin = fopen(in_file, "r");
-    fseek(fin, 0, SEEK_END);
-    *input_size = ftell(fin);
-    fseek(fin, 0, SEEK_SET);
-
-    if (*input_size > BUF_SIZE) {
-        fprintf(stderr, "input_size is too big (%lu > %d)\n",
-                *input_size, BUF_SIZE);
+    if (fin == NULL) {
+        fprintf(stderr, "Invalid input file: %s\n", in_file);
         return 1;
     }
 
-#if DEBUG
-    printf("read_input: read %lu bytes from %s\n", *input_size, in_file);
-#endif
-   
-    size_t n = fread(input_buf, sizeof(*input_buf), *input_size, fin);
-    (void) n;
-    fclose(fin);
+    fseek(fin, 0, SEEK_END);
+    input->length = ftell(fin);
+    fseek(fin, 0, SEEK_SET);
 
-    return 0;
+    if (input->length > input->max) {
+        fprintf(stderr, "input_size is too big (%d > %d)\n",
+                input->length, input->max);
+        return 1;
+    }
+
+	input->buffer = malloc(input->length * sizeof(*(input->buffer)));
+	input->curr = input->buffer;
+	size_t n = fread(input->buffer, sizeof(*(input->buffer)), input->length, fin);
+	fclose(fin);
+
+#if DEBUG
+    printf("%s: read %d bytes from %s (%lu)\n", __func__, input->length, in_file, n);
+#endif
+
+   return (n != input->length);
 }
 
 /**
@@ -398,27 +344,6 @@ static int write_output_host(char *out_file, struct host_buffer_context* output)
     fwrite(output->buffer, 1, output->length, fout);
     fclose(fout);
 
-    return 0;
-}
-
-static int get_uncompressed_length(char *input) {
-    char compressed[BUF_SIZE];
-
-    size_t compressed_len;
-    if (read_input(input, compressed, &compressed_len)) {
-        return 1;
-    }
-
-    size_t result;
-    snappy_status status = snappy_uncompressed_length(compressed, 
-                                                      compressed_len, 
-                                                      &result);
-    if (status != SNAPPY_OK) {
-        fprintf(stderr, "encountered snappy error\n");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("snappy_uncompressed_length: %ld\n", result);
     return 0;
 }
 
@@ -440,9 +365,10 @@ static void usage(const char* exe_name)
 int main(int argc, char **argv)
 {
 	int opt;
-	int use_dpu=0;
-	char *input_file=NULL;
-	char *output_file=NULL;
+	int use_dpu = 0;
+    snappy_status status;
+	char *input_file = NULL;
+	char *output_file = NULL;
 	struct host_buffer_context input;
 	struct host_buffer_context output;
 
@@ -481,47 +407,41 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 		return -1;
 	}
-
 	printf("Using input file %s\n", input_file);
-	if (output_file)
-		printf("Using output file %s\n", output_file);
 
-	if (output_file)
+    // If no output file was provided, use a default file
+    if (output_file == NULL) {
+        output_file = "output.txt";
+    }
+    printf("Using output file %s\n", output_file);
+
+	// Read the input file into main memory
+	if (read_input_host(input_file, &input))
+		return 1;
+
+	status = setup_output_descriptor(&input, &output);
+
+	if (use_dpu)
 	{
-		snappy_status status;
-
-		// read the input file into main memory
-		if (read_input_host(input_file, &input))
-			return 1;
-
-		status = setup_output_descriptor(&input, &output);
-
-		if (use_dpu)
-		{
-			status = snappy_uncompress_dpu(&input, &output);
-		}
-		else
-		{
-			status = snappy_uncompress_host(&input, &output);
-		}
-
-		if (status == SNAPPY_OK)
-		{
-			// write the output buffer from main memory to a file
-			if (write_output_host(output_file, &output))
-				return 1;
-
-			printf("uncompressed %u bytes to: %s\n", output.length, output_file);
-		}
-		else
-		{
-			fprintf(stderr, "encountered snappy error %u\n", status);
-			exit(EXIT_FAILURE);
-		}
+		status = snappy_uncompress_dpu(&input, &output);
 	}
 	else
 	{
-		get_uncompressed_length(input_file);
+		status = snappy_uncompress_host(&input, &output);
+	}
+
+	if (status == SNAPPY_OK)
+	{
+		// Write the output buffer from main memory to a file
+	    if (write_output_host(output_file, &output))
+		    return 1;
+
+		printf("uncompressed %u bytes to: %s\n", output.length, output_file);
+	}
+	else
+	{
+		fprintf(stderr, "encountered snappy error %u\n", status);
+		exit(EXIT_FAILURE);
 	}
 
 	return 0;
