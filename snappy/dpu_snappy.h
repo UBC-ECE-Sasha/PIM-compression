@@ -5,6 +5,8 @@
 #define BITMASK(_x) ((1 << _x) - 1)
 #define MIN(_a, _b) (_a < _b ? _a : _b)
 
+#define ALIGN(_p, _width) (((unsigned int)_p + (_width-1)) & (0-_width))
+#define WINDOW_ALIGN(_p, _width) (((unsigned int)_p) & (0-_width))
 #define GET_ELEMENT_TYPE(_tag) (_tag & BITMASK(2))
 #define GET_LITERAL_LENGTH(_tag) (_tag >> 2)
 #define GET_LENGTH_1_BYTE(_tag) ((_tag >> 2) & BITMASK(3))

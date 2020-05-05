@@ -15,7 +15,7 @@
 /***********************
  * Struct declarations *
  ***********************/
-static char READ_BYTE(struct in_buffer_context *_i)
+static unsigned char READ_BYTE(struct in_buffer_context *_i)
 {
 	_i->ptr = seqread_get(_i->ptr, sizeof(uint8_t), &_i->sr);
 	_i->curr++;
@@ -36,7 +36,6 @@ static uint16_t make_offset_1_byte(unsigned char tag, struct in_buffer_context *
 
 static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *input)
 {
-	//printf("%s\n", __func__);
 	uint32_t total;
 	UNUSED(tag);
 
@@ -50,7 +49,6 @@ static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *
 
 static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *input)
 {
-	printf("%s\n", __func__);
 	uint32_t total;
 	UNUSED(tag);
 
@@ -78,7 +76,7 @@ uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 	int shift = 0;
 	uint32_t limit = input->length;
 
-	printf("reading long literal in %u bytes\n", len);
+	dbg_printf("reading long literal in %u bytes\n", len);
 	while (len--)
 	{
 		if (input->curr >= limit)
@@ -91,37 +89,101 @@ uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 	return size;
 }
 
-static inline bool writer_append_dpu(struct in_buffer_context *input, struct buffer_context *output, uint32_t *len)
+static inline bool writer_append_dpu(struct in_buffer_context *input, struct out_buffer_context *output, uint16_t len)
 {
-	//printf("Writing %u bytes\n", *len);
-	while (*len &&
-		input->curr < (input->length) &&
-		output->curr < (output->buffer + output->length))
+	while (len)
 	{
-		*output->curr = READ_BYTE(input);
+		uint32_t curr_index = output->curr - output->append_window;
+
+		// if we are past the window, write the current window back to MRAM and start a new one
+		if (curr_index >= OUT_BUFFER_LENGTH)
+		{
+			dbg_printf("Past EOB - writing back output\n");
+			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
+
+			// if we are writing back the current append buffer, but also dependent on the append buffer
+			// for the read window, we must keep a copy of the data for reading
+			dbg_printf("Read window: 0x%x Append window: 0x%x\n", output->read_window, output->append_window);
+			if (output->read_window == output->append_window)
+				memcpy(output->read_ptr, output->append_ptr, OUT_BUFFER_LENGTH);
+
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index = 0;
+		}
+		output->append_ptr[curr_index] = READ_BYTE(input);
 		output->curr++;
-		(*len) -= 1;
+		len--;
 	}
 	return true;
 }
 
-void write_copy_dpu(struct buffer_context *output, uint32_t copy_length, uint32_t offset)
+/* This function may still have unhandled corner cases */
+void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uint32_t offset)
 {
-	//printf("Copying %u bytes from offset=0x%lx to 0x%lx\n", copy_length, (output->curr - output->buffer) - offset, output->curr - output->buffer);
-	const char *copy_curr = output->curr;
-	copy_curr -= offset;
-	if (copy_curr < output->buffer)
+	if (offset > output->curr)
 	{
-		printf("bad offset!\n");
+		printf("Invalid offset detected: 0x%x\n", offset);
 		return;
 	}
-	while (copy_length &&
-		output->curr < (output->buffer + output->length))
+	uint32_t read_index = output->curr - offset;
+	dbg_printf("Copying %u bytes from offset=0x%x to 0x%x\n", copy_length, read_index, output->curr);
+
+	// load the correct read window and recalibrate the read index
+	char *src_ptr = output->read_ptr;
+	uint32_t need_window = WINDOW_ALIGN(read_index, OUT_BUFFER_LENGTH);
+	read_index %= OUT_BUFFER_LENGTH;
+	dbg_printf("Need window: 0x%x\n", need_window);
+	dbg_printf("Have window: 0x%x\n", output->read_window);
+	dbg_printf("Append window: 0x%x\n", output->append_window);
+	if (need_window == output->append_window)
+		src_ptr = output->append_ptr;
+	else if (need_window != output->read_window)
+		mram_read(&output->buffer[need_window], output->read_ptr, OUT_BUFFER_LENGTH);
+
+	output->read_window = need_window;
+
+	uint32_t curr_index = output->curr - output->append_window;
+	while (copy_length)
 	{
-		*output->curr = *copy_curr;
-		copy_curr++;
+		// if we are past the append window, write the current window back to MRAM and start a new one
+		if (curr_index >= OUT_BUFFER_LENGTH)
+		{
+			dbg_printf("Past EOB - writing back output\n");
+			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index = 0;
+
+			// if we are writing back the current append buffer, but also dependent on the append buffer
+			// for the read window, we must keep a copy of the data for reading
+			if (src_ptr == output->append_ptr)
+			{
+				memcpy(output->read_ptr, output->append_ptr, OUT_BUFFER_LENGTH);
+				src_ptr = output->read_ptr;
+			}
+		}
+
+		// if we are past the read window, load the next one
+		if (read_index >= OUT_BUFFER_LENGTH)
+		{
+			dbg_printf("Past EORB - loading new read buffer 0x%x (old rb 0x%x)\n", need_window + OUT_BUFFER_LENGTH, need_window);
+			need_window += OUT_BUFFER_LENGTH;
+
+			// check to see if we are moving into the append window
+			if (need_window == output->append_window)
+			{
+				src_ptr = output->append_ptr;
+			}
+			else
+			{
+				mram_read(&output->buffer[need_window], output->read_ptr, OUT_BUFFER_LENGTH);
+				output->read_window = need_window;
+				src_ptr = output->read_ptr;
+			}
+			read_index = 0;
+		}
+		output->append_ptr[curr_index++] = src_ptr[read_index++];
 		output->curr++;
-		copy_length -= 1;
+		copy_length--;
 	}
 }
 
@@ -133,12 +195,13 @@ void write_copy_dpu(struct buffer_context *output, uint32_t copy_length, uint32_
  * Public functions  *
  *********************/
 
-snappy_status dpu_uncompress(struct in_buffer_context *input, struct buffer_context *output)
+snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_context *output)
 {
 	dbg_printf("curr: %u length: %u\n", input->curr, input->length);
+	dbg_printf("output length: %u\n", output->length);
 	while (input->curr != input->length) // less-than doesn't work!
 	{
-		uint16_t length;
+		uint32_t length;
 		uint32_t offset;
 		unsigned char tag;
 		tag = READ_BYTE(input);
@@ -157,14 +220,8 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct buffer_cont
 			if (length > 60)
 				length = read_long_literal_size(input, length - 60) + 1;
 
-			uint32_t remaining = length;
-			while (remaining &&
-				input->curr < (input->length) &&
-				output->curr < (output->buffer + output->length))
-			{
-				if (!writer_append_dpu(input, output, &remaining))
-					return SNAPPY_OUTPUT_ERROR;
-			}
+			if (!writer_append_dpu(input, output, length))
+				return SNAPPY_OUTPUT_ERROR;
 			break;
 
 			// Copies are references back into previous decompressed data, telling
@@ -192,6 +249,11 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct buffer_cont
 		}
 	}
 
+	// write out the final buffer
+	dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, output->length % OUT_BUFFER_LENGTH);
+	//output->append_ptr[OUT_BUFFER_LENGTH-1] = 0;
+	//printf("Contents: %s\n", output->append_ptr);
+	mram_write(output->append_ptr, &output->buffer[output->append_window], output->length % OUT_BUFFER_LENGTH);
 	return SNAPPY_OK;
 }
 

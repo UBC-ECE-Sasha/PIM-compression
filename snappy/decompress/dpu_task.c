@@ -4,21 +4,23 @@
 #include "alloc.h"
 #include "dpu_decompress.h"
 
-#define MAX_LENGTH 2048
+#define MAX_LENGTH 0x100000
 
 // MRAM variables
 __host uint32_t input_length;
-__host char* input_buffer;
 __host uint32_t input_offset;
 __host uint32_t output_length;
-__host char* output_buffer;
+__host __mram_ptr char* input_buffer;
+__host __mram_ptr char* output_buffer;
 
 int main()
 {
 	struct in_buffer_context input;
-	struct buffer_context output;
+	struct out_buffer_context output;
 
 	perfcounter_config(COUNT_CYCLES, true);
+
+	printf("DPU starting\n");
 
 	if (input_length > MAX_LENGTH)
 	{
@@ -28,16 +30,22 @@ int main()
 
 	// prepare the descriptors
 	input.length = input_length;
+	output.buffer = output_buffer;
+	output.append_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
+	output.read_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
+	output.curr = 0;
+	output.append_window = 0;
+	output.read_window = -1;
 	output.length = output_length;
-	output.buffer = (char*)ALIGN(mem_alloc(MAX_LENGTH), 8);
-	output.curr = output.buffer;
+	output.flags = 0;
+
+	printf("reading input data from MRAM @ 0x%x\n", (uint32_t)input_buffer);
+	printf("writing output data to MRAM @ 0x%x\n", (uint32_t)output_buffer);
 
 	// set up sequential reader which copies MRAM to WRAM on demand
-	printf("Sequential reader size: %u\n", SEQREAD_CACHE_SIZE);
 	input.cache = seqread_alloc();
-	dbg_printf("input cache: 0x%x\n", input.cache);
-	input.ptr = seqread_init(input.cache, DPU_MRAM_HEAP_POINTER, &input.sr);
-	dbg_printf("input ptr: 0x%x\n", input.ptr);
+	//input.ptr = seqread_init(input.cache, DPU_MRAM_HEAP_POINTER, &input.sr);
+	input.ptr = seqread_init(input.cache, input_buffer, &input.sr);
 	input.curr = 0;
 
 	// fast-forward sequential reader to account for bytes already read
@@ -50,9 +58,6 @@ int main()
 		printf("Failed in %ld cycles\n", perfcounter_get());
 		return -1;
 	}
-
-	// copy the output buffer to WRAM
-	mram_write(output.buffer, DPU_MRAM_HEAP_POINTER, MAX_LENGTH);
 
 	printf("Completed in %ld cycles\n", perfcounter_get());
 	return 0;

@@ -1,4 +1,5 @@
 #include <dpu.h>
+#include <dpu_memory.h>
 #include <dpu_log.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -250,12 +251,17 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	/* set up and run the program on the DPU */
+	uint32_t input_buffer_start = 1024 * 1024;
+	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
 	uint32_t offset = (uint32_t)(input->curr - input->buffer);
+	printf("Placing input data at buffer 0x%x\n", input_buffer_start);
 	DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, DPU_MRAM_HEAP_POINTER_NAME, 0, input->buffer, input->length));
+	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, &offset, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output->length, sizeof(uint32_t)));
+	DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
+	dpu_copy_to_mram(dpu.dpu, input_buffer_start, (unsigned char*)input->buffer, input->length, 0);
 	int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
 
 	if (ret != 0)
@@ -265,7 +271,9 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	/* get the results back from the DPU */
-	DPU_ASSERT(dpu_copy_from(dpu, DPU_MRAM_HEAP_POINTER_NAME, 0, output->buffer, output->length));
+	//DPU_ASSERT(dpu_copy_from(dpu, DPU_MRAM_HEAP_POINTER_NAME+input->length, 0, output->buffer, output->length));
+	//dpu_copy_from_symbol_dpu(dpu, k);
+	dpu_copy_from_mram(dpu.dpu, (unsigned char*)output->buffer, output_buffer_start, output->length, 0);
 
 	// Uncompressed size might be too big to read back to host.
 	if (res_size > BUF_SIZE) {
