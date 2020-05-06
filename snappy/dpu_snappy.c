@@ -220,18 +220,6 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
 	return SNAPPY_OK;
 }
 
-snappy_status snappy_compress(const char* input,
-                              size_t input_length,
-                              char* compressed,
-                              size_t *compressed_length) {
-    // TODO use host system snappy
-    (void) input;
-    (void) input_length;
-    (void) compressed;
-    (void) compressed_length;
-    return SNAPPY_OK;
-}
-
 /**
  * Prepare the DPU context by copying the buffer to be decompressed and
  * uploading the program to the DPU.
@@ -240,48 +228,50 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 {
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;
-	uint64_t res_size=0;
+	uint64_t res_size = 0;
 
 	UNUSED(output);
 
+    // Allocate a DPU
 	DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
 
 	DPU_FOREACH(dpus, dpu) {
 		break;
 	}
 
-	/* set up and run the program on the DPU */
+	// Set up and run the program on the DPU
 	uint32_t input_buffer_start = 1024 * 1024;
 	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
 	uint32_t offset = (uint32_t)(input->curr - input->buffer);
-	printf("Placing input data at buffer 0x%x\n", input_buffer_start);
+
+    // Must be a multiple of 8 to ensure the last write to MRAM is also a multiple of 8
+    uint32_t output_length = (output->length + 7) & ~7;
+
 	DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, &offset, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output->length, sizeof(uint32_t)));
+	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
 	dpu_copy_to_mram(dpu.dpu, input_buffer_start, (unsigned char*)input->buffer, input->length, 0);
-	int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
-
+	
+    int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
 	if (ret != 0)
 	{
 		DPU_ASSERT(dpu_free(dpus));
 		return SNAPPY_INVALID_INPUT;
 	}
 
-	/* get the results back from the DPU */
-	//DPU_ASSERT(dpu_copy_from(dpu, DPU_MRAM_HEAP_POINTER_NAME+input->length, 0, output->buffer, output->length));
-	//dpu_copy_from_symbol_dpu(dpu, k);
+	// Get the results back from the DPU 
 	dpu_copy_from_mram(dpu.dpu, (unsigned char*)output->buffer, output_buffer_start, output->length, 0);
 
-	// Uncompressed size might be too big to read back to host.
+	// Uncompressed size might be too big to read back to host
 	if (res_size > BUF_SIZE) {
-		printf("uncompressed file is too big (%ld > %d)\n",
-			res_size, BUF_SIZE);
+		printf("uncompressed file is too big (%ld > %d)\n", res_size, BUF_SIZE);
 		exit(EXIT_FAILURE);
 	}
 
+    // Deallocate the DPUs
 	DPU_FOREACH(dpus, dpu) {
 		DPU_ASSERT(dpu_log_read(dpu, stdout));
 	}
@@ -291,23 +281,10 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	return SNAPPY_OK;
 }
 
-size_t snappy_max_compressed_length(size_t source_length) {
-    // TODO
-    (void) source_length;
-    return 0;
-}
-
-snappy_status snappy_validate_compressed_buffer(const char *compressed,
-                                                size_t compressed_length) {
-    // TODO
-    (void) compressed;
-    (void) compressed_length;
-    return SNAPPY_OK;
-}
-
 /**
  * Read the contents of a file into an in-memory buffer. Upon success,
  * return 0 and write the amount read to input->length.
+ *
  * @param in_file The input filename.
  * @param input The struct to which contents of file are written to.
  */
@@ -334,7 +311,7 @@ static int read_input_host(char *in_file, struct host_buffer_context *input)
 	size_t n = fread(input->buffer, sizeof(*(input->buffer)), input->length, fin);
 	fclose(fin);
 
-#if DEBUG
+#ifdef DEBUG
     printf("%s: read %d bytes from %s (%lu)\n", __func__, input->length, in_file, n);
 #endif
 
@@ -343,6 +320,7 @@ static int read_input_host(char *in_file, struct host_buffer_context *input)
 
 /**
  * Write the contents of the output buffer to a file.
+ *
  * @param out_file The output filename.
  * @param output Pointer to the buffer containing the contents.
  */

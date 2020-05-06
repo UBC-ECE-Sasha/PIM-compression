@@ -89,6 +89,14 @@ uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 	return size;
 }
 
+/**
+ * Copy and append data from the input buffer to the output buffer.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param len: length of data to copy over
+ * @return True
+ */
 static inline bool writer_append_dpu(struct in_buffer_context *input, struct out_buffer_context *output, uint16_t len)
 {
 	while (len)
@@ -117,28 +125,41 @@ static inline bool writer_append_dpu(struct in_buffer_context *input, struct out
 	return true;
 }
 
-/* This function may still have unhandled corner cases */
+/**
+ * Copy and append previous data to the output buffer. The data may
+ * already be existing in the append buffer or read buffer in WRAM,
+ * or may need to be copied into the read buffer first.
+ *
+ * @param output: holds output buffer information
+ * @param copy_length: length of data to copy over
+ * @param offset: where to copy from, offset from the current output
+ *                pointer
+ */
 void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uint32_t offset)
 {
+    // We only copy previous data, not future data
 	if (offset > output->curr)
 	{
 		printf("Invalid offset detected: 0x%x\n", offset);
 		return;
 	}
+
 	uint32_t read_index = output->curr - offset;
 	dbg_printf("Copying %u bytes from offset=0x%x to 0x%x\n", copy_length, read_index, output->curr);
 
-	// load the correct read window and recalibrate the read index
+	// Load the correct read window and recalibrate the read index
 	char *src_ptr = output->read_ptr;
 	uint32_t need_window = WINDOW_ALIGN(read_index, OUT_BUFFER_LENGTH);
 	read_index %= OUT_BUFFER_LENGTH;
 	dbg_printf("Need window: 0x%x\n", need_window);
 	dbg_printf("Have window: 0x%x\n", output->read_window);
 	dbg_printf("Append window: 0x%x\n", output->append_window);
-	if (need_window == output->append_window)
+
+	if (need_window == output->append_window) // Use data currently in append window
 		src_ptr = output->append_ptr;
-	else if (need_window != output->read_window)
+	else if (need_window != output->read_window) // Need to load new read window
 		mram_read(&output->buffer[need_window], output->read_ptr, OUT_BUFFER_LENGTH);
+    // Else use the existing read window
 
 	output->read_window = need_window;
 
@@ -249,10 +270,8 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 		}
 	}
 
-	// write out the final buffer
+	// Write out the final buffer
 	dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, output->length % OUT_BUFFER_LENGTH);
-	//output->append_ptr[OUT_BUFFER_LENGTH-1] = 0;
-	//printf("Contents: %s\n", output->append_ptr);
 	mram_write(output->append_ptr, &output->buffer[output->append_window], output->length % OUT_BUFFER_LENGTH);
 	return SNAPPY_OK;
 }

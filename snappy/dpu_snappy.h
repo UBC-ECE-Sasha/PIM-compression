@@ -19,30 +19,30 @@
  * what each can return.
  */
 typedef enum {
-  SNAPPY_OK = 0,
-  SNAPPY_INVALID_INPUT,
-  SNAPPY_BUFFER_TOO_SMALL,
-	SNAPPY_OUTPUT_ERROR
+    SNAPPY_OK = 0,
+    SNAPPY_INVALID_INPUT,
+    SNAPPY_BUFFER_TOO_SMALL,
+    SNAPPY_OUTPUT_ERROR
 } snappy_status;
 
 
 enum element_type
 {
-	EL_TYPE_LITERAL,
-	EL_TYPE_COPY_1,
-	EL_TYPE_COPY_2,
-	EL_TYPE_COPY_4
+    EL_TYPE_LITERAL,
+    EL_TYPE_COPY_1,
+    EL_TYPE_COPY_2,
+    EL_TYPE_COPY_4
 };
 
 #define OUT_BUFFER_FLAG_DIRTY	(1<<0)
 
 typedef struct host_buffer_context
 {
-	char* ptr;
-	char* buffer;
-	char* curr;
-	uint32_t length;
-	uint32_t max;
+    char *ptr;
+    char *buffer;
+    char *curr;
+    uint32_t length;
+    uint32_t max;
 } host_buffer_context;
 
 #endif  /* _DPU_SNAPPY_H_ */

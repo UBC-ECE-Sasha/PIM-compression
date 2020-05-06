@@ -34,7 +34,7 @@ typedef struct in_buffer_context
 	in WRAM, and therefore must be loaded into a second buffer - the read window.
 	The read window holds a read-only copy of previous data from the file and it
 	can point to any arbitrary (aligned) portion of previously written data. This
-	simplifies memcpy from WRAM to WRAM.
+	simplifies memcpy from WRAM to MRAM.
 */
 /* TODO: reduce the size of these variables, where possible */
 typedef struct out_buffer_context
