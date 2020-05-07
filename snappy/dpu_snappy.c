@@ -9,7 +9,7 @@
 #include "dpu_snappy.h"
 
 #define DPU_DECOMPRESS_PROGRAM "decompress/decompress.dpu"
-#define MAX_OUTPUT_LENGTH 16384
+#define MAX_OUTPUT_LENGTH 163840
 
 #define BUF_SIZE (1 << 10)
 
@@ -59,50 +59,45 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 static uint16_t make_offset_1_byte(unsigned char tag, struct host_buffer_context *input)
 {
 	//printf("%s\n", __func__);
-	if (input->curr >= input->buffer + input->length)
+
+	if (input->curr >= (input->buffer + input->length))
 		return 0;
 	return (uint16_t)((unsigned char)*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
 }
 
 static uint16_t make_offset_2_byte(unsigned char tag, struct host_buffer_context *input)
 {
-	//printf("%s\n", __func__);
-	unsigned char c;
 	UNUSED(tag);
-	uint16_t total=0;
-	if (input->curr >= input->buffer + input->length)
-		return 0;
-	c = *input->curr++;
-	total |= c;
-	if (input->curr >= input->buffer + input->length)
-		return 0;
-	c = *input->curr++;
-	return total | c << 8;
+	//printf("%s\n", __func__);
+
+    uint16_t total = 0;	
+    if ((input->curr + sizeof(uint16_t)) >= (input->buffer + input->length))
+        return 0;
+    else {
+	    total = *((uint16_t *)input->curr);
+        input->curr += sizeof(uint16_t);
+        return total;
+    }    
 }
 
 static uint32_t make_offset_4_byte(unsigned char tag, struct host_buffer_context *input)
 {
-	printf("%s\n", __func__);
-	uint32_t total;
 	UNUSED(tag);
-	const char *limit = input->buffer + input->length;
-	if (input->curr >= limit)
-		return 0;
-	total = *input->curr++;
-	if (input->curr >= limit)
-		return 0;
-	total |= (*input->curr++) << 8;
-	if (input->curr >= limit)
-		return 0;
-	total |= (*input->curr++) << 16;
-	if (input->curr >= limit)
-		return 0;
-	return total | (*input->curr++) << 24;
+	//printf("%s\n", __func__);
+
+    uint32_t total = 0;
+    if ((input->curr + sizeof(uint32_t)) >= (input->buffer + input->length))
+        return 0;
+    else {
+        total = *((uint32_t *)input->curr);
+        input->curr += sizeof(uint32_t);
+        return total;
+    }
 }
 
 static inline bool writer_append_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t *len)
 {
-	//printf("Writing %u bytes\n", *len);
+//	printf("Writing %u bytes\n", *len);
 	while (*len &&
 		input->curr < (input->buffer + input->length) &&
 		output->curr < (output->buffer + output->length))
@@ -117,7 +112,7 @@ static inline bool writer_append_host(struct host_buffer_context *input, struct 
 
 void write_copy_host(struct host_buffer_context *output, uint32_t copy_length, uint32_t offset)
 {
-	//printf("Copying %u bytes from offset=0x%lx to 0x%lx\n", copy_length, (output->curr - output->buffer) - offset, output->curr - output->buffer);
+//	printf("Copying %u bytes from offset=0x%lx to 0x%lx\n", copy_length, (output->curr - output->buffer) - offset, output->curr - output->buffer);
 	const char *copy_curr = output->curr;
 	copy_curr -= offset;
 	if (copy_curr < output->buffer)
@@ -137,27 +132,23 @@ void write_copy_host(struct host_buffer_context *output, uint32_t copy_length, u
 
 uint32_t read_long_literal_size(struct host_buffer_context *input, uint32_t len)
 {
-	uint32_t size = 0;
-	int shift = 0;
-	const char *limit = input->buffer + input->length;
+    if ((input->curr + len) >= (input->buffer + input->length))
+        return 0;
+    else {
+        uint32_t bitmask = 0;
+        for (uint32_t i = 0; i < len; i++) {
+            bitmask |= (0xFF << i);
+        }
 
-	//printf("reading long literal in %u bytes\n", len);
-	while (len--)
-	{
-		if (input->curr >= limit)
-			return 0;
-		char c = (*input->curr++);
-		size |= c << shift;
-		shift += 8;
-	}
-
-	return size;
+        uint32_t size = (*((uint32_t *)input->curr)) & bitmask;
+        input->curr += len;
+        return size;
+    }
 }
 
 snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
 {
-	while (input->curr < (input->buffer + input->length))
-	{
+	while (input->curr < (input->buffer + input->length)) {
 		uint16_t length;
 		uint32_t offset;
 		const unsigned char tag = *input->curr++;
@@ -173,13 +164,11 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
 			/* For literals up to and including 60 bytes in length, the upper
 				six bits of the tag byte contain (len-1). The literal follows
 				immediately thereafter in the bytestream. */
-			length = GET_LITERAL_LENGTH(tag) + 1;
-			//printf("reading literal length=%u\n", length);
+			length = GET_LENGTH_2_BYTE(tag) + 1;
 
 			if (length > 60)
 			{
 				length = read_long_literal_size(input, length - 60) + 1;
-				//printf("reading literal length=%u\n", length);
 			}
 
 			uint32_t remaining = length;

@@ -12,20 +12,15 @@
 
 #include "dpu_decompress.h"
 
-/***********************
- * Struct declarations *
- ***********************/
+/*******************
+ * Memory helpers  *
+ *******************/
 static unsigned char READ_BYTE(struct in_buffer_context *_i)
 {
 	_i->ptr = seqread_get(_i->ptr, sizeof(uint8_t), &_i->sr);
 	_i->curr++;
 	return *_i->ptr;
 }
-
-
-/*******************
- * Memory helpers  *
- *******************/
 
 static uint16_t make_offset_1_byte(unsigned char tag, struct in_buffer_context *input)
 {
@@ -36,34 +31,25 @@ static uint16_t make_offset_1_byte(unsigned char tag, struct in_buffer_context *
 
 static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *input)
 {
-	uint32_t total;
 	UNUSED(tag);
 
-	if (input->curr >= input->length)
+	if ((input->curr + sizeof(uint16_t)) >= input->length)
 		return 0;
-	total = READ_BYTE(input);
-	if (input->curr >= input->length)
-		return 0;
-	return total | READ_BYTE(input) << 8;
+    else {
+       return (READ_BYTE(input) | (READ_BYTE(input) << 8));
+    }
 }
 
 static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *input)
 {
-	uint32_t total;
-	UNUSED(tag);
-
-	if (input->curr >= input->length)
+    if ((input->curr + sizeof(uint32_t)) >= input->length)
 		return 0;
-	total = READ_BYTE(input);
-	if (input->curr >= input->length)
-		return 0;
-	total |= READ_BYTE(input) << 8;
-	if (input->curr >= input->length)
-		return 0;
-	total |= READ_BYTE(input) << 16;
-	if (input->curr >= input->length)
-		return 0;
-	return total | READ_BYTE(input) << 24;
+    else {
+        return (READ_BYTE(input) |
+                (READ_BYTE(input) << 8) |
+                (READ_BYTE(input) << 16) |
+                (READ_BYTE(input) << 24));
+    }
 }
 
 /***************************
@@ -72,21 +58,16 @@ static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *
 
 uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 {
-	uint32_t size = 0;
-	int shift = 0;
-	uint32_t limit = input->length;
-
-	dbg_printf("reading long literal in %u bytes\n", len);
-	while (len--)
-	{
-		if (input->curr >= limit)
-			return 0;
-		char c = READ_BYTE(input);
-		size |= c << shift;
-		shift += 8;
-	}
-
-	return size;
+    if ((input->curr + len) >= input->length)
+        return 0;
+    else {
+        uint32_t size = 0;
+        for (uint32_t i = 0; i < len; i++) {
+            size |= (READ_BYTE(input) << (i * 8));
+        }
+    
+        return size;
+    }
 }
 
 /**
@@ -237,8 +218,8 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 			// For literals up to and including 60 bytes in length, the upper
 			// six bits of the tag byte contain (len-1). The literal follows
 			// immediately thereafter in the bytestream.
-			length = GET_LITERAL_LENGTH(tag) + 1;
-			if (length > 60)
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			if (length >= 60)
 				length = read_long_literal_size(input, length - 60) + 1;
 
 			if (!writer_append_dpu(input, output, length))
