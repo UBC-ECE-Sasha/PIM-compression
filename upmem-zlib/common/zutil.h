@@ -234,6 +234,8 @@ extern z_const char * const z_errmsg[10]; /* indexed by 2-zlib_error */
    void ZLIB_INTERNAL zmemzero OF((Bytef* dest, uInt len));
 #endif
 
+   void mram_memcpy(void __mram_ptr* dest, void __mram_ptr* source, uint32_t len);
+
 /* Diagnostic functions */
 #ifdef ZLIB_DEBUG
 #  include <stdio.h>

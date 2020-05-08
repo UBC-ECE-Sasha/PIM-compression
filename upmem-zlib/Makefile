@@ -1,14 +1,14 @@
 RM 						= rm -rf
 
 DPU_CC 					= dpu-upmem-dpurte-clang
-DPU_CFLAGS 				= -O -g -w
+DPU_CFLAGS 				= -O0 -g -w -fno-builtin-memcpy 
 
 CC 						= gcc
 CFLAGS 					= -g -w `dpu-pkg-config --cflags --libs dpu`
 
 DPU_COMMON_SOURCES		= zlib/adler32.c common/zutil.c 
 #DPU_COMMON_INCLUDES		= -Icommon -Izlib/ -Lzlib/
-DPU_COMMON_INCLUDES		= -Icommon -Lzlib/
+DPU_COMMON_INCLUDES		= -Icommon
 
 COMMON_SOURCES			=
 COMMON_INCLUDES 		= -Izlib/lib/ -Lzlib/lib/ -lz -Icommon

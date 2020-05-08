@@ -148,6 +148,8 @@ const char * ZEXPORT zError(err)
 
 #ifndef HAVE_MEMCPY
 
+#pragma clang optimize off
+
 void ZLIB_INTERNAL zmemcpy(dest, source, len)
     Bytef* dest;
     const Bytef* source;
@@ -181,6 +183,17 @@ void ZLIB_INTERNAL zmemzero(dest, len)
         *dest++ = 0;  /* ??? to be unrolled */
     } while (--len != 0);
 }
+
+  
+void mram_memcpy(void __mram_ptr* dest, void __mram_ptr* source, uint32_t len)
+{
+    if (len == 0) return;
+    do {
+        *dest++ = *source++;
+    } while (--len != 0);
+}
+
+#pragma clang optimize on
 #endif
 
 #ifndef Z_SOLO
