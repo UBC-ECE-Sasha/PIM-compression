@@ -93,6 +93,15 @@
 
 #pragma clang optimize off
 
+
+void ZLIB_INTERNAL mram_memcpy(void __mram_ptr* dest, void __mram_ptr* source, uint32_t len)
+{
+    if (len == 0) return;
+    do {
+        *dest++ = *source++;
+    } while (--len != 0);
+}
+
 /* Utility functions for copying the state->codes array */
 void copy_state_codes_next(struct inflate_state __mram_ptr *state)
 {

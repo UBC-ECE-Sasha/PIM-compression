@@ -185,7 +185,7 @@ void ZLIB_INTERNAL zmemzero(dest, len)
 }
 
   
-void mram_memcpy(void __mram_ptr* dest, void __mram_ptr* source, uint32_t len)
+void ZLIB_INTERNAL mram_memcpy(void __mram_ptr* dest, void __mram_ptr* source, uint32_t len)
 {
     if (len == 0) return;
     do {
