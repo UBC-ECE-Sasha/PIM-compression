@@ -16,15 +16,15 @@ default: all
 all: dpu host
 
 clean:
-	$(RM) decompress_host
-	$(MAKE) -C decompress $@
+	$(RM) decompress
+	$(MAKE) -C dpu-decompress $@
 
 dpu:
-	DEBUG=$(DEBUG) $(MAKE) -C decompress 
+	DEBUG=$(DEBUG) $(MAKE) -C dpu-decompress 
 
-host: decompress_host
+host: decompress
 	
-decompress_host: $(SOURCE)
+decompress: $(SOURCE)
 	$(CC) $(CFLAGS) $^ -o $@ $(DPU_OPTS)
 
 tags:
