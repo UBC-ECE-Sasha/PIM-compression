@@ -823,9 +823,9 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 		int table_size;
 		u16 *table = get_hash_table(env, num_to_read, &table_size);
 
-		/* Compress input_fragment */
+		/* Compress input_fragment, leave enough space for two full varints in front */
 		char *dest;
-		dest = sink_peek(writer, snappy_max_compressed_length(num_to_read));
+		dest = sink_peek(writer, snappy_max_compressed_length(num_to_read)) + 2 * sizeof(u32);
 		if (!dest) {
 			/*
 			 * Need a scratch buffer for the output,
@@ -836,17 +836,20 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 		}
 		char *end = compress_fragment(fragment, fragment_size,
 					      dest, table, table_size);
+        
+        /* Get size of decompressed data */
+        char dlength[kmax32];
+        char *d = varint_encode32(dlength, num_to_read);
 
         /* Append the size of the compressed data */
         char clength[kmax32];
-        char *p = varint_encode32(clength, end - dest);
-        append(writer, clength, p - clength);
-    	written += (p - clength);
+        char *c = varint_encode32(clength, end - dest + (d - dlength));
+        append(writer, clength, c - clength);
+    	written += (c - clength);
 
         /* Append the size of the decompressed data */
-        p = varint_encode32(clength, num_to_read);
-        append(writer, clength, p - clength);
-        written += (p - clength);
+        append(writer, dlength, d - dlength);
+        written += (d - dlength);
 
         /* Append the compressed data */
 		append(writer, dest, end - dest);

@@ -110,8 +110,7 @@ int main(int ac, char **av)
 			strerror(errno));
 		err = 1;
 	}
-
-	if (!to_stdout)
+	if (!(to_stdout || av[optind + 1]))
 		free(file);
 	free(out);
 	
