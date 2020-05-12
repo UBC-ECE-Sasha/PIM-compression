@@ -8,7 +8,7 @@
 
 #include "dpu_snappy.h"
 
-#define DPU_DECOMPRESS_PROGRAM "decompress/decompress.dpu"
+#define DPU_DECOMPRESS_PROGRAM "dpu-decompress/decompress.dpu"
 #define MAX_OUTPUT_LENGTH 163840
 
 #define BUF_SIZE (1 << 10)
@@ -19,23 +19,17 @@ const char options[]="di:o:";
 static bool read_length_host(struct host_buffer_context *input, uint32_t *len)
 {
 	int shift = 0;
-	const char *limit = input->buffer + input->length;
-
 	*len = 0;
-	while (1)
-	{
-		if (input->curr >= limit)
-			return false;
+	
+    for (uint8_t count = 0; count < sizeof(uint32_t); count++) {
 		char c = (*input->curr++);
 		*len |= (c & BITMASK(7)) << shift;
 		if (!(c & (1 << 7)))
 			return true;
 		shift += 7;
-		if (shift > 32)
-			return false;
 	}
 
-	return true;
+	return false;
 }
 
 /**
@@ -289,7 +283,7 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset, sizeof(uint32_t) * NR_TASKLETS));
+//	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset, sizeof(uint32_t) * NR_TASKLETS));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
 	dpu_copy_to_mram(dpu.dpu, input_buffer_start, (unsigned char*)input->buffer, input->length, 0);

@@ -8,7 +8,6 @@
 
 // MRAM variables
 __host uint32_t input_length;
-__host uint32_t input_offset;
 __host uint32_t output_length;
 __host __mram_ptr char* input_buffer;
 __host __mram_ptr char* output_buffer;
@@ -47,10 +46,6 @@ int main()
 	//input.ptr = seqread_init(input.cache, DPU_MRAM_HEAP_POINTER, &input.sr);
 	input.ptr = seqread_init(input.cache, input_buffer, &input.sr);
 	input.curr = 0;
-
-	// fast-forward sequential reader to account for bytes already read
-	while (++input.curr < input_offset)
-		input.ptr = seqread_get(input.ptr, sizeof(uint8_t), &input.sr);
 
 	// Do the uncompress
 	if (dpu_uncompress(&input, &output))
