@@ -40,7 +40,6 @@ typedef struct host_buffer_context
     char *buffer;
     char *curr;
     uint32_t length;
-    uint32_t block_size;
     uint32_t max;
 } host_buffer_context;
 

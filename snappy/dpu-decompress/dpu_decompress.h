@@ -23,7 +23,6 @@ typedef struct in_buffer_context
 	seqreader_t sr;
 	uint32_t curr;
 	uint32_t length;
-	uint32_t max;
 } in_buffer_context;
 
 /* This is for buffering writes on UPMEM. The data is written in an 'append'
@@ -46,7 +45,6 @@ typedef struct out_buffer_context
 	uint32_t read_window; /* offset of output buffer mapped by read window (must be multiple of window size) */
 	uint32_t curr; /* current offset in output buffer in MRAM */
 	uint32_t length; /* total size of output buffer in bytes */
-	uint32_t flags; /* see OUT_BUFFER_FLAG_* */
 } out_buffer_context;
 
 /**

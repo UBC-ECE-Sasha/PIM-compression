@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <mram.h>
-
+#include <defs.h>
 #include "dpu_decompress.h"
 
 /*******************
@@ -34,7 +34,7 @@ static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *
 {
 	UNUSED(tag);
 
-	if ((input->curr + sizeof(uint16_t)) >= input->length)
+	if ((input->curr + sizeof(uint16_t)) > input->length)
 		return 0;
     else {
        return (READ_BYTE(input) | (READ_BYTE(input) << 8));
@@ -43,7 +43,7 @@ static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *
 
 static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *input)
 {
-    if ((input->curr + sizeof(uint32_t)) >= input->length)
+    if ((input->curr + sizeof(uint32_t)) > input->length)
 		return 0;
     else {
         return (READ_BYTE(input) |
@@ -103,7 +103,7 @@ static inline bool writer_append_dpu(struct in_buffer_context *input, struct out
 		// if we are past the window, write the current window back to MRAM and start a new one
 		if (curr_index >= OUT_BUFFER_LENGTH)
 		{
-			dbg_printf("Past EOB - writing back output\n");
+			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
 
 			// if we are writing back the current append buffer, but also dependent on the append buffer
@@ -166,9 +166,9 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 		// if we are past the append window, write the current window back to MRAM and start a new one
 		if (curr_index >= OUT_BUFFER_LENGTH)
 		{
-			dbg_printf("Past EOB - writing back output\n");
+			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-			output->append_window += OUT_BUFFER_LENGTH;
+	     	output->append_window += OUT_BUFFER_LENGTH;
 			curr_index = 0;
 
 			// if we are writing back the current append buffer, but also dependent on the append buffer
@@ -199,7 +199,8 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 			}
 			read_index = 0;
 		}
-		output->append_ptr[curr_index++] = src_ptr[read_index++];
+		
+        output->append_ptr[curr_index++] = src_ptr[read_index++];
 		output->curr++;
 		copy_length--;
 	}
@@ -278,8 +279,14 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 	}
 
 	// Write out the final buffer
-	dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, output->length % OUT_BUFFER_LENGTH);
-	mram_write(output->append_ptr, &output->buffer[output->append_window], output->length % OUT_BUFFER_LENGTH);
-	return SNAPPY_OK;
+    if (output->append_window < output->length) {
+        uint32_t len_final = output->length % OUT_BUFFER_LENGTH;
+        if (len_final == 0)
+            len_final = OUT_BUFFER_LENGTH;
+
+	    dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, len_final);
+	    mram_write(output->append_ptr, &output->buffer[output->append_window], len_final);
+	}
+    return SNAPPY_OK;
 }
 

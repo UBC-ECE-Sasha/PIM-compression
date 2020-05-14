@@ -1,4 +1,5 @@
 #include <mram.h>
+#include <defs.h>
 #include <perfcounter.h>
 #include <stdio.h>
 #include "alloc.h"
@@ -9,6 +10,8 @@
 // MRAM variables
 __host uint32_t input_length;
 __host uint32_t output_length;
+__host uint32_t input_offset[NR_TASKLETS];
+__host uint32_t output_offset[NR_TASKLETS];
 __host __mram_ptr char* input_buffer;
 __host __mram_ptr char* output_buffer;
 
@@ -16,10 +19,7 @@ int main()
 {
 	struct in_buffer_context input;
 	struct out_buffer_context output;
-
-	perfcounter_config(COUNT_CYCLES, true);
-
-	printf("DPU starting\n");
+    uint8_t idx = me();
 
 	if (input_length > MAX_LENGTH)
 	{
@@ -27,34 +27,54 @@ int main()
 		return -2;
 	}
 
-	// prepare the descriptors
-	input.length = input_length;
-	output.buffer = output_buffer;
+	// Prepare the input and output descriptors
+    uint32_t input_start = input_offset[idx];
+    uint32_t output_start = output_offset[idx];
+
+    input.cache = seqread_alloc();
+	input.ptr = seqread_init(input.cache, input_buffer + input_start, &input.sr);
+    input.curr = 0;
+    input.length = 0;
+
+	output.buffer = output_buffer + output_start;
 	output.append_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
-	output.read_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
-	output.curr = 0;
 	output.append_window = 0;
-	output.read_window = -1;
-	output.length = output_length;
-	output.flags = 0;
+    output.read_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
+	output.read_window = -1;   
+    output.curr = 0;
+    output.length = 0;
 
-	printf("reading input data from MRAM @ 0x%x\n", (uint32_t)input_buffer);
-	printf("writing output data to MRAM @ 0x%x\n", (uint32_t)output_buffer);
+    // Calculate the actual length this tasklet parses
+    if (idx < (NR_TASKLETS - 1)) {
+        uint32_t input_end = input_offset[idx + 1];
+        uint32_t output_end = output_offset[idx + 1];
 
-	// set up sequential reader which copies MRAM to WRAM on demand
-	input.cache = seqread_alloc();
-	//input.ptr = seqread_init(input.cache, DPU_MRAM_HEAP_POINTER, &input.sr);
-	input.ptr = seqread_init(input.cache, input_buffer, &input.sr);
-	input.curr = 0;
+        input.length = input_end - input_start;
+        output.length = output_end - output_start;
+        
+        if (((idx == 0) || (input_start != 0)) && (input_end == 0)) {
+            input.length = input_length - input_start;
+            output.length = output_length - output_start;
+        }
+    }
+    else if ((idx == 0) || (input_start != 0)) {
+        input.length = input_length - input_start;
+        output.length = output_length - output_start;
+    } 
+	
+    printf("DPU starting, tasklet %d\n", idx);
+    perfcounter_config(COUNT_CYCLES, true);
 
-	// Do the uncompress
-	if (dpu_uncompress(&input, &output))
-	{
-		printf("Failed in %ld cycles\n", perfcounter_get());
-		return -1;
-	}
+    if (input.length != 0) {
+	    // Do the uncompress
+	    if (dpu_uncompress(&input, &output))
+	    {
+		    printf("Tasklet %d: failed in %ld cycles\n", idx, perfcounter_get());
+		    return -1;
+	    }
+    }
 
-	printf("Completed in %ld cycles\n", perfcounter_get());
+	printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get());
 	return 0;
 }
 

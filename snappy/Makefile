@@ -7,6 +7,9 @@ ifeq ($(DEBUG), 1)
 	CFLAGS+=-DDEBUG
 endif
 
+# Default NR_TASKLETS
+NR_TASKLETS = 16
+
 SOURCE = dpu_snappy.c
 
 .PHONY: default all dpu host clean tags
@@ -20,12 +23,12 @@ clean:
 	$(MAKE) -C dpu-decompress $@
 
 dpu:
-	DEBUG=$(DEBUG) $(MAKE) -C dpu-decompress 
+	DEBUG=$(DEBUG) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-decompress
 
 host: decompress
 	
 decompress: $(SOURCE)
-	$(CC) $(CFLAGS) $^ -o $@ $(DPU_OPTS)
+	$(CC) $(CFLAGS) -DNR_TASKLETS=$(NR_TASKLETS) $^ -o $@ $(DPU_OPTS)
 
 tags:
 	ctags -R -f tags . /usr/share/upmem/include
