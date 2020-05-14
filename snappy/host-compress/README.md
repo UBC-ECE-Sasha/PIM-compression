@@ -13,7 +13,7 @@ This is an altered version of the C port of Google's Snappy compressor, ported b
     <END FILE>
     ```
   * __Altered Format:__ compressed file consists of blocks that are individually compressed (rather than the whole file being compressed) and the compressed length of each block is pre-pended. Note that the compressed length includes the length taken up by storing the decompressed length plus the actual data itself.
-   ```
+    ```
     <START FILE>
         <SNAPPY BLOCK 1: COMPRESSED LENGTH>
             <DECOMPRESSED LENGTH>
