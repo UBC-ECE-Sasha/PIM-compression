@@ -5,8 +5,6 @@
 #include "alloc.h"
 #include "dpu_decompress.h"
 
-#define MAX_LENGTH 0x100000
-
 // MRAM variables
 __host uint32_t input_length;
 __host uint32_t output_length;
@@ -21,9 +19,9 @@ int main()
 	struct out_buffer_context output;
     uint8_t idx = me();
 
-	if (input_length > MAX_LENGTH)
+	if (input_length > MAX_FILE_LENGTH)
 	{
-		printf("Input length is too big: max=%i\n", MAX_LENGTH);
+		printf("Input length is too big: max=%i\n", MAX_FILE_LENGTH);
 		return -2;
 	}
 

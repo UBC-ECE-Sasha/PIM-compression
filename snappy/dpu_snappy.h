@@ -13,6 +13,9 @@
 #define GET_OFFSET_1_BYTE(_tag) ((_tag >> 5) & BITMASK(3))
 #define GET_LENGTH_2_BYTE(_tag) ((_tag >> 2) & BITMASK(6))
 
+// Max length of the input and output files
+#define MAX_FILE_LENGTH 0x100000
+
 /*
  * Return values; see the documentation for each function to know
  * what each can return.

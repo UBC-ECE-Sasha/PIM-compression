@@ -36,21 +36,19 @@ static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *
 
 	if ((input->curr + sizeof(uint16_t)) > input->length)
 		return 0;
-    else {
-       return (READ_BYTE(input) | (READ_BYTE(input) << 8));
-    }
+       
+    return (READ_BYTE(input) | (READ_BYTE(input) << 8));
 }
 
 static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *input)
 {
     if ((input->curr + sizeof(uint32_t)) > input->length)
 		return 0;
-    else {
-        return (READ_BYTE(input) |
+    
+    return (READ_BYTE(input) |
                 (READ_BYTE(input) << 8) |
                 (READ_BYTE(input) << 16) |
                 (READ_BYTE(input) << 24));
-    }
 }
 
 /***************************
@@ -76,14 +74,13 @@ uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 {
     if ((input->curr + len) >= input->length)
         return 0;
-    else {
-        uint32_t size = 0;
-        for (uint32_t i = 0; i < len; i++) {
-            size |= (READ_BYTE(input) << (i * 8));
-        }
     
-        return size;
+    uint32_t size = 0;
+    for (uint32_t i = 0; i < len; i++) {
+        size |= (READ_BYTE(input) << (i << 3));
     }
+    
+    return size;
 }
 
 /**
@@ -245,7 +242,7 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 	    		// six bits of the tag byte contain (len-1). The literal follows
 	    		// immediately thereafter in the bytestream.
 	    		length = GET_LENGTH_2_BYTE(tag) + 1;
-	    		if (length >= 60)
+	    		if (length > 60)
 	    			length = read_long_literal_size(input, length - 60) + 1;
     
     			if (!writer_append_dpu(input, output, length))

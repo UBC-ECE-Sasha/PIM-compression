@@ -8,7 +8,6 @@
 #include "dpu_snappy.h"
 
 #define DPU_DECOMPRESS_PROGRAM "dpu-decompress/decompress.dpu"
-#define MAX_OUTPUT_LENGTH 163840
 
 #define BUF_SIZE (1 << 10)
 
@@ -393,11 +392,11 @@ int main(int argc, char **argv)
 
 	input.buffer = NULL;
 	input.length = 0;
-	input.max = 131072;
+	input.max = MAX_FILE_LENGTH;
 
 	output.buffer = NULL;
 	output.length = 0;
-	output.max = MAX_OUTPUT_LENGTH;
+	output.max = MAX_FILE_LENGTH;
 
 	while ((opt = getopt(argc, argv, options)) != -1)
 	{
