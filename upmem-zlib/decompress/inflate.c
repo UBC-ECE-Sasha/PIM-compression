@@ -84,6 +84,7 @@
 #include "inftrees.h"
 #include "inflate.h"
 #include "inffast.h"
+#include <alloc.h>
 
 #ifdef MAKEFIXED
 #  ifndef BUILDFIXED
@@ -97,9 +98,12 @@
 void ZLIB_INTERNAL mram_memcpy(void __mram_ptr* dest, void __mram_ptr* source, uint32_t len)
 {
     if (len == 0) return;
-    do {
-        *dest++ = *source++;
-    } while (--len != 0);
+
+    // TODO: Check for condition where len won't fit into WRAM
+    void *buf = buddy_alloc(len);
+    mram_read(source, buf, len);
+    mram_write(buf, dest, len);
+    buddy_free(buf);
 }
 
 /* Utility functions for copying the state->codes array */
