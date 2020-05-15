@@ -12,7 +12,7 @@ void usage(void)
 {
 	fprintf(stderr, 
 		"host_compress [-b block_size] [-s] file [outfile]\n"
-        "-b block size to break down input file, default is 32K\n"
+		"-b block size to break down input file, default is 32K\n"
 		"-s print to standard output\n"
 		"Compress or uncompress file with snappy.\n"
 		"When no output file is specified write to file.snp\n");
@@ -47,20 +47,20 @@ int main(int ac, char **av)
 {
 	int opt;
 	int to_stdout = 0;
-    int block_size = 32 * 1024; // Default is 32K
+	int block_size = 32 * 1024; // Default is 32K
 
 	while ((opt = getopt(ac, av, "b:s")) != -1) {
 		switch (opt) { 
-        case 'b':
-            block_size = atoi(optarg);
-            break;
+		case 'b':
+			block_size = atoi(optarg);
+			break;
 		case 's':
 			to_stdout = 1;
 			break;
-        default:
-            break;
-        }
-    }
+		default:
+			break;
+		}
+	}
 
 	char *map;
 	size_t size;

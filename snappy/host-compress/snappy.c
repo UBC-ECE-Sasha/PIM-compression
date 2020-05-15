@@ -13,13 +13,13 @@
  * modification, are permitted provided that the following conditions are
  * met:
  *
- *     * Redistributions of source code must retain the above copyright
+ *	   * Redistributions of source code must retain the above copyright
  * notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
+ *	   * Redistributions in binary form must reproduce the above
  * copyright notice, this list of conditions and the following disclaimer
  * in the documentation and/or other materials provided with the
  * distribution.
- *     * Neither the name of Google Inc. nor the names of its
+ *	   * Neither the name of Google Inc. nor the names of its
  * contributors may be used to endorse or promote products derived from
  * this software without specific prior written permission.
  *
@@ -135,8 +135,8 @@ static inline int find_lsb_set_non_zero64(u64 n)
 
 /*
  * REQUIRES   "ptr" points to a buffer of length sufficient to hold "v".
- *  EFFECTS    Encodes "v" into "ptr" and returns a pointer to the
- *            byte just past the last encoded byte.
+ *	EFFECTS    Encodes "v" into "ptr" and returns a pointer to the
+ *			  byte just past the last encoded byte.
  */
 static inline char *varint_encode32(char *sptr, u32 v)
 {
@@ -172,7 +172,7 @@ static inline char *varint_encode32(char *sptr, u32 v)
 
 static inline void *n_bytes_after_addr(void *addr, size_t n_bytes)
 {
-    return (void *) ((char *)addr + n_bytes);
+	return (void *) ((char *)addr + n_bytes);
 }
 
 struct source {
@@ -313,21 +313,21 @@ static inline u32 hash(const char *p, int shift)
 
 /*
  * Compressed data can be defined as:
- *    compressed := item* literal*
- *    item       := literal* copy
+ *	  compressed := item* literal*
+ *	  item		 := literal* copy
  *
  * The trailing literal sequence has a space blowup of at most 62/60
  * since a literal of length 60 needs one tag byte + one extra byte
  * for length information.
  *
- * Item blowup is trickier to measure.  Suppose the "copy" op copies
+ * Item blowup is trickier to measure.	Suppose the "copy" op copies
  * 4 bytes of data.  Because of a special check in the encoding code,
- * we produce a 4-byte copy only if the offset is < 65536.  Therefore
+ * we produce a 4-byte copy only if the offset is < 65536.	Therefore
  * the copy op takes 3 bytes to encode, and this type of item leads
  * to at most the 62/60 blowup for representing literals.
  *
  * Suppose the "copy" op copies 5 bytes of data.  If the offset is big
- * enough, it will take 5 bytes to encode the copy op.  Therefore the
+ * enough, it will take 5 bytes to encode the copy op.	Therefore the
  * worst case here is a one-byte literal followed by a five-byte copy.
  * I.e., 6 bytes of input turn into 7 bytes of "compressed" data.
  *
@@ -362,11 +362,11 @@ static inline char *emit_literal(char *op,
  * copy up to 15 bytes too much, but that is okay in the
  * main loop, since we have a bit to go on for both sides:
  *
- *   - The input will always have kInputMarginBytes = 15 extra
- *     available bytes, as long as we're in the main loop, and
- *     if not, allow_fast_path = false.
- *   - The output will always have 32 spare bytes (see
- *     MaxCompressedLength).
+ *	 - The input will always have kInputMarginBytes = 15 extra
+ *	   available bytes, as long as we're in the main loop, and
+ *	   if not, allow_fast_path = false.
+ *	 - The output will always have 32 spare bytes (see
+ *	   MaxCompressedLength).
  */
 		if (allow_fast_path && len <= 16) {
 			unaligned_copy64(literal, op);
@@ -401,7 +401,7 @@ static inline char *emit_copy_less_than64(char *op, int offset, int len)
 		int len_minus_4 = len - 4;
 		DCHECK(len_minus_4 < 8);	/* Must fit in 3 bits */
 		*op++ =
-		    COPY_1_BYTE_OFFSET + ((len_minus_4) << 2) + ((offset >> 8)
+			COPY_1_BYTE_OFFSET + ((len_minus_4) << 2) + ((offset >> 8)
 								 << 5);
 		*op++ = offset & 0xff;
 	} else {
@@ -464,7 +464,7 @@ static inline char *emit_copy(char *op, int offset, int len)
  * many hash table entries anyway.
  */
 static u16 *get_hash_table(struct snappy_env *env, size_t input_size,
-			      int *table_size)
+				  int *table_size)
 {
 	unsigned htsize = 256;
 
@@ -485,8 +485,8 @@ static u16 *get_hash_table(struct snappy_env *env, size_t input_size,
 /*
  * Return the largest n such that
  *
- *   s1[0,n-1] == s2[0,n-1]
- *   and n <= (s2_limit - s2).
+ *	 s1[0,n-1] == s2[0,n-1]
+ *	 and n <= (s2_limit - s2).
  *
  * Does not read *s2_limit or beyond.
  * Does not read *(s1 + (s2_limit - s2)) or beyond.
@@ -497,7 +497,7 @@ static u16 *get_hash_table(struct snappy_env *env, size_t input_size,
  */
 #if defined(__LITTLE_ENDIAN__) && BITS_PER_LONG == 64
 static inline int find_match_length(const char *s1,
-				    const char *s2, const char *s2_limit)
+					const char *s2, const char *s2_limit)
 {
 	int matched = 0;
 
@@ -510,7 +510,7 @@ static inline int find_match_length(const char *s1,
 	 */
 	while (likely(s2 <= s2_limit - 8)) {
 		if (unlikely
-		    (UNALIGNED_LOAD64(s2) == UNALIGNED_LOAD64(s1 + matched))) {
+			(UNALIGNED_LOAD64(s2) == UNALIGNED_LOAD64(s1 + matched))) {
 			s2 += 8;
 			matched += 8;
 		} else {
@@ -523,8 +523,8 @@ static inline int find_match_length(const char *s1,
 			 * instruction to improve.
 			 */
 			u64 x =
-			    UNALIGNED_LOAD64(s2) ^ UNALIGNED_LOAD64(s1 +
-								    matched);
+				UNALIGNED_LOAD64(s2) ^ UNALIGNED_LOAD64(s1 +
+									matched);
 			int matching_bits = find_lsb_set_non_zero64(x);
 			matched += matching_bits >> 3;
 			return matched;
@@ -542,20 +542,20 @@ static inline int find_match_length(const char *s1,
 }
 #else
 static inline int find_match_length(const char *s1,
-				    const char *s2, const char *s2_limit)
+					const char *s2, const char *s2_limit)
 {
 	/* Implementation based on the x86-64 version, above. */
 	DCHECK_GE(s2_limit, s2);
 	int matched = 0;
 
 	while (s2 <= s2_limit - 4 &&
-	       UNALIGNED_LOAD32(s2) == UNALIGNED_LOAD32(s1 + matched)) {
+		   UNALIGNED_LOAD32(s2) == UNALIGNED_LOAD32(s1 + matched)) {
 		s2 += 4;
 		matched += 4;
 	}
 	if (is_little_endian() && s2 <= s2_limit - 4) {
 		u32 x =
-		    UNALIGNED_LOAD32(s2) ^ UNALIGNED_LOAD32(s1 + matched);
+			UNALIGNED_LOAD32(s2) ^ UNALIGNED_LOAD32(s1 + matched);
 		int matching_bits = find_lsb_set_non_zero(x);
 		matched += matching_bits >> 3;
 	} else {
@@ -570,9 +570,9 @@ static inline int find_match_length(const char *s1,
 
 /*
  * For 0 <= offset <= 4, GetU32AtOffset(GetEightBytesAt(p), offset) will
- *  equal UNALIGNED_LOAD32(p + offset).  Motivation: On x86-64 hardware we have
+ *	equal UNALIGNED_LOAD32(p + offset).  Motivation: On x86-64 hardware we have
  * empirically found that overlapping loads such as
- *  UNALIGNED_LOAD32(p) ... UNALIGNED_LOAD32(p+1) ... UNALIGNED_LOAD32(p+2)
+ *	UNALIGNED_LOAD32(p) ... UNALIGNED_LOAD32(p+1) ... UNALIGNED_LOAD32(p+2)
  * are slower than UNALIGNED_LOAD64(p) followed by shifts and casts to u32.
  *
  * We have different versions for 64- and 32-bit; ideally we would avoid the
@@ -618,7 +618,7 @@ static inline u32 get_u32_at_offset(const char *v, int offset)
 
 /*
  * Flat array compression that does not emit the "uncompressed length"
- *  prefix. Compresses "input" string to the "*op" buffer.
+ *	prefix. Compresses "input" string to the "*op" buffer.
  *
  * REQUIRES: "input" is at most "kBlockSize" bytes long.
  * REQUIRES: "op" points to an array of memory that is at least
@@ -631,8 +631,8 @@ static inline u32 get_u32_at_offset(const char *v, int offset)
  */
 
 static char *compress_fragment(const char *const input,
-			       const size_t input_size,
-			       char *op, u16 * table, const unsigned table_size)
+				   const size_t input_size,
+				   char *op, u16 * table, const unsigned table_size)
 {
 	/* "ip" is the input pointer, and "op" is the output pointer. */
 	const char *ip = input;
@@ -643,7 +643,7 @@ static char *compress_fragment(const char *const input,
 	const char *baseip = ip;
 	/*
 	 * Bytes in [next_emit, ip) will be emitted as literal bytes.  Or
-	 *  [next_emit, ip_end) after the main loop.
+	 *	[next_emit, ip_end) after the main loop.
 	 */
 	const char *next_emit = ip;
 
@@ -658,7 +658,7 @@ static char *compress_fragment(const char *const input,
 			DCHECK_LT(next_emit, ip);
 /*
  * The body of this loop calls EmitLiteral once and then EmitCopy one or
- * more times.  (The exception is that when we're close to exhausting
+ * more times.	(The exception is that when we're close to exhausting
  * the input we goto emit_remainder.)
  *
  * In the first iteration of this loop we're just starting, so
@@ -706,7 +706,7 @@ static char *compress_fragment(const char *const input,
 
 /*
  * Step 2: A 4-byte match has been found.  We'll later see if more
- * than 4 bytes match.  But, prior to the match, input
+ * than 4 bytes match.	But, prior to the match, input
  * bytes [next_emit, ip) are unmatched.  Emit them as "literal bytes."
  */
 			DCHECK_LE(next_emit + 16, ip_end);
@@ -728,12 +728,12 @@ static char *compress_fragment(const char *const input,
 			do {
 /*
  * We have a 4-byte match at ip, and no need to emit any
- *  "literal bytes" prior to ip.
+ *	"literal bytes" prior to ip.
  */
 				const char *base = ip;
 				int matched = 4 +
-				    find_match_length(candidate + 4, ip + 4,
-						      ip_end);
+					find_match_length(candidate + 4, ip + 4,
+							  ip_end);
 				ip += matched;
 				int offset = base - candidate;
 				DCHECK_EQ(0, memcmp(base, candidate, matched));
@@ -749,12 +749,12 @@ static char *compress_fragment(const char *const input,
 				}
 				input_bytes = get_eight_bytes_at(insert_tail);
 				u32 prev_hash =
-				    hash_bytes(get_u32_at_offset
-					       (input_bytes, 0), shift);
+					hash_bytes(get_u32_at_offset
+						   (input_bytes, 0), shift);
 				table[prev_hash] = ip - baseip - 1;
 				u32 cur_hash =
-				    hash_bytes(get_u32_at_offset
-					       (input_bytes, 1), shift);
+					hash_bytes(get_u32_at_offset
+						   (input_bytes, 1), shift);
 				candidate = baseip + table[cur_hash];
 				candidate_bytes = UNALIGNED_LOAD32(candidate);
 				table[cur_hash] = ip - baseip;
@@ -762,8 +762,8 @@ static char *compress_fragment(const char *const input,
 				 candidate_bytes);
 
 			next_hash =
-			    hash_bytes(get_u32_at_offset(input_bytes, 2),
-				       shift);
+				hash_bytes(get_u32_at_offset(input_bytes, 2),
+					   shift);
 			++ip;
 		}
 	}
@@ -793,7 +793,7 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 		}
 		const unsigned num_to_read = min_t(int, N, block_size);
 		size_t bytes_read = fragment_size;
-        int pending_advance = 0;
+		int pending_advance = 0;
 		if (bytes_read >= num_to_read) {
 			/* Buffer returned by reader is large enough */
 			pending_advance = num_to_read;
@@ -806,7 +806,7 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 			while (bytes_read < num_to_read) {
 				fragment = peek(reader, &fragment_size);
 				size_t n =
-				    min_t(size_t, fragment_size,
+					min_t(size_t, fragment_size,
 					  num_to_read - bytes_read);
 				memcpy((char *)(env->scratch) + bytes_read, fragment, n);
 				bytes_read += n;
@@ -835,23 +835,23 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 			dest = env->scratch_output;
 		}
 		char *end = compress_fragment(fragment, fragment_size,
-					      dest, table, table_size);
-        
-        /* Get size of decompressed data */
-        char dlength[kmax32];
-        char *d = varint_encode32(dlength, num_to_read);
+						  dest, table, table_size);
+		
+		/* Get size of decompressed data */
+		char dlength[kmax32];
+		char *d = varint_encode32(dlength, num_to_read);
 
-        /* Append the size of the compressed data */
-        char clength[kmax32];
-        char *c = varint_encode32(clength, end - dest + (d - dlength));
-        append(writer, clength, c - clength);
-    	written += (c - clength);
+		/* Append the size of the compressed data */
+		char clength[kmax32];
+		char *c = varint_encode32(clength, end - dest + (d - dlength));
+		append(writer, clength, c - clength);
+		written += (c - clength);
 
-        /* Append the size of the decompressed data */
-        append(writer, dlength, d - dlength);
-        written += (d - dlength);
+		/* Append the size of the decompressed data */
+		append(writer, dlength, d - dlength);
+		written += (d - dlength);
 
-        /* Append the compressed data */
+		/* Append the compressed data */
 		append(writer, dest, end - dest);
 		written += (end - dest);
 
@@ -872,7 +872,7 @@ int snappy_compress_iov(struct snappy_env *env,
 			size_t input_length,
 			struct iovec *iov_out,
 			int *iov_out_len,
-            size_t block_size,
+			size_t block_size,
 			size_t *compressed_length)
 {
 	struct source reader = {
@@ -913,9 +913,9 @@ EXPORT_SYMBOL(snappy_compress_iov);
  * of this function, just preallocates the memory.
  */
 int snappy_compress(struct snappy_env *env,
-		    const char *input,
-		    size_t input_length, size_t block_size,
-		    char *compressed, size_t *compressed_length)
+			const char *input,
+			size_t input_length, size_t block_size,
+			char *compressed, size_t *compressed_length)
 {
 	struct iovec iov_in = {
 		.iov_base = (char *)input,
@@ -952,9 +952,9 @@ EXPORT_SYMBOL(snappy_compress);
  * of this function, just preallocates the memory.
  */
 int snappy_compress(struct snappy_env *env,
-		    const char *input,
-		    size_t input_length, size_t block_size,
-		    char *compressed, size_t *compressed_length)
+			const char *input,
+			size_t input_length, size_t block_size,
+			char *compressed, size_t *compressed_length)
 {
 	struct source reader = {
 		.ptr = input,
@@ -974,7 +974,7 @@ EXPORT_SYMBOL(snappy_compress);
 
 static inline void clear_env(struct snappy_env *env)
 {
-    memset(env, 0, sizeof(*env));
+	memset(env, 0, sizeof(*env));
 }
 
 #ifdef SG
@@ -1021,7 +1021,7 @@ EXPORT_SYMBOL(snappy_init_env_sg);
  */
 int snappy_init_env(struct snappy_env *env)
 {
-    clear_env(env);
+	clear_env(env);
 	env->hash_table = vmalloc(sizeof(u16) * kmax_hash_table_size);
 	if (!env->hash_table)
 		return -ENOMEM;
