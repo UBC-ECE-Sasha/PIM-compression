@@ -15,22 +15,22 @@
 /*******************
  * Memory helpers  *
  *******************/
-static unsigned char READ_BYTE(struct in_buffer_context *_i)
+static uint8_t READ_BYTE(struct in_buffer_context *_i)
 {
-	unsigned char ret = *_i->ptr;
+	uint8_t ret = *_i->ptr;
 	_i->ptr = seqread_get(_i->ptr, sizeof(uint8_t), &_i->sr);
 	_i->curr++;
 	return ret;
 }
 
-static uint16_t make_offset_1_byte(unsigned char tag, struct in_buffer_context *input)
+static uint16_t make_offset_1_byte(uint8_t tag, struct in_buffer_context *input)
 {
 	if (input->curr >= input->length)
 		return 0;
 	return (uint16_t)(READ_BYTE(input)) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
 }
 
-static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *input)
+static uint16_t make_offset_2_byte(uint8_t tag, struct in_buffer_context *input)
 {
 	UNUSED(tag);
 
@@ -40,7 +40,7 @@ static uint16_t make_offset_2_byte(unsigned char tag, struct in_buffer_context *
 	return (READ_BYTE(input) | (READ_BYTE(input) << 8));
 }
 
-static uint32_t make_offset_4_byte(unsigned char tag, struct in_buffer_context *input)
+static uint32_t make_offset_4_byte(uint8_t tag, struct in_buffer_context *input)
 {
 	if ((input->curr + sizeof(uint32_t)) > input->length)
 		return 0;
@@ -60,7 +60,7 @@ static bool read_length_dpu(struct in_buffer_context *input, uint32_t *len)
 	*len = 0;
 
 	for (uint8_t count = 0; count < 4; count++) {
-		char c = READ_BYTE(input);
+		uint8_t c = READ_BYTE(input);
 		*len |= (c & BITMASK(7)) << shift;
 
 		if (!(c & (1 << 7)))
@@ -142,7 +142,7 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 	dbg_printf("Copying %u bytes from offset=0x%x to 0x%x\n", copy_length, read_index, output->curr);
 
 	// Load the correct read window and recalibrate the read index
-	char *src_ptr = output->read_ptr;
+	uint8_t *src_ptr = output->read_ptr;
 	uint32_t need_window = WINDOW_ALIGN(read_index, OUT_BUFFER_LENGTH);
 	read_index %= OUT_BUFFER_LENGTH;
 	dbg_printf("Need window: 0x%x\n", need_window);
@@ -228,7 +228,7 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 		while (input->curr < end_block) {
 			uint32_t length;
 			uint32_t offset;
-			unsigned char tag;
+			uint8_t tag;
 			tag = READ_BYTE(input);
 			dbg_printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - 1);
 			// There are two types of elements in a Snappy stream: Literals and

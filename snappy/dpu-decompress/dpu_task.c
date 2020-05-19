@@ -10,8 +10,9 @@ __host uint32_t input_length;
 __host uint32_t output_length;
 __host uint32_t input_offset[NR_TASKLETS];
 __host uint32_t output_offset[NR_TASKLETS];
-__host __mram_ptr char* input_buffer;
-__host __mram_ptr char* output_buffer;
+
+__mram_noinit uint8_t input_buffer[MAX_FILE_LENGTH];
+__mram_noinit uint8_t output_buffer[MAX_FILE_LENGTH];
 
 int main()
 {
@@ -35,9 +36,9 @@ int main()
 	input.length = 0;
 
 	output.buffer = output_buffer + output_start;
-	output.append_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
+	output.append_ptr = (uint8_t*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
 	output.append_window = 0;
-	output.read_ptr = (char*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
+	output.read_ptr = (uint8_t*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
 	output.read_window = -1;   
 	output.curr = 0;
 	output.length = 0;

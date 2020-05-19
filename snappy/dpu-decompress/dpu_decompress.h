@@ -18,7 +18,7 @@
 
 typedef struct in_buffer_context
 {
-	char* ptr;
+	uint8_t* ptr;
 	seqreader_buffer_t cache;
 	seqreader_t sr;
 	uint32_t curr;
@@ -38,10 +38,10 @@ typedef struct in_buffer_context
 /* TODO: reduce the size of these variables, where possible */
 typedef struct out_buffer_context
 {
-	__mram_ptr char* buffer; /* the entire output buffer in MRAM */
-	char* append_ptr; /* the append window in WRAM */
+	__mram_ptr uint8_t* buffer; /* the entire output buffer in MRAM */
+	uint8_t* append_ptr; /* the append window in WRAM */
 	uint32_t append_window; /* offset of output buffer mapped by append window (must be multiple of window size) */
-	char* read_ptr; /* the read window in WRAM */
+	uint8_t* read_ptr; /* the read window in WRAM */
 	uint32_t read_window; /* offset of output buffer mapped by read window (must be multiple of window size) */
 	uint32_t curr; /* current offset in output buffer in MRAM */
 	uint32_t length; /* total size of output buffer in bytes */

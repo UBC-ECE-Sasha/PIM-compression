@@ -40,8 +40,8 @@ enum element_type
 
 typedef struct host_buffer_context
 {
-	char *buffer;
-	char *curr;
+	uint8_t *buffer;
+	uint8_t *curr;
 	uint32_t length;
 	uint32_t max;
 } host_buffer_context;
