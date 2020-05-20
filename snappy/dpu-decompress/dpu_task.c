@@ -62,7 +62,7 @@ int main()
 	
 	printf("DPU starting, tasklet %d\n", idx);
 	perfcounter_config(COUNT_CYCLES, true);
-
+	
 	if (input.length != 0) {
 		// Do the uncompress
 		if (dpu_uncompress(&input, &output))

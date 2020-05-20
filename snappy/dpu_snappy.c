@@ -13,7 +13,7 @@
 
 const char options[]="di:o:";
 
-static bool read_length_host(struct host_buffer_context *input, uint32_t *len)
+static bool read_varint32(struct host_buffer_context *input, uint32_t *len)
 {
 	int shift = 0;
 	*len = 0;
@@ -42,52 +42,46 @@ static bool read_length_host(struct host_buffer_context *input, uint32_t *len)
 static snappy_status setup_output_descriptor(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_TASKLETS], uint32_t output_offset[NR_TASKLETS])
 {
 	uint32_t idx = 0;
-	uint32_t output_count = 0;
-	uint32_t output_block_size = 0;
 	uint32_t input_size_per_task = input->length / NR_TASKLETS;
-	uint32_t uncompressed_length = 0;
 
-	while (input->curr < (input->buffer + input->length)) {
+	// Read the decompressed length
+	uint32_t dlength;
+	if (!read_varint32(input, &dlength))
+		return SNAPPY_BUFFER_TOO_SMALL;
+
+	// Read the decompressed block size
+	uint32_t dblock_size;
+	if (!read_varint32(input, &dblock_size))
+		return SNAPPY_BUFFER_TOO_SMALL;
+
+	uint32_t block_start = 0;
+	uint32_t num_blocks = dlength / dblock_size + (dlength % dblock_size != 0);
+	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached a new boundary, log the offset of this block
 		// in the input_offset and output_offset arrays. This should roughly 
 		// evenly divide the work between NR_TASKLETS tasks.
-		if ((input->curr - input->buffer) >= (input_size_per_task * idx)) {
-			input_offset[idx] = input->curr - input->buffer;
-			output_offset[idx] = output_count * output_block_size;
+		if (block_start >= (input_size_per_task * idx)) {
+			input_offset[idx] = block_start;
+			output_offset[idx] = i * dblock_size;
 			idx++;
 		}
-
-		// Read the compressed block size of the current block
-		uint32_t compressed_block_size;
-		if (!read_length_host(input, &compressed_block_size))
-			return SNAPPY_BUFFER_TOO_SMALL;
-		uint8_t *block_base = input->curr;
-
-		// Read the decompressed block size of the current block,
-		// if this is the largest we've seen then update the
-		// output block size
-		uint32_t uncompressed_block_size;
-		if (!read_length_host(input, &uncompressed_block_size))
-			return SNAPPY_BUFFER_TOO_SMALL;
-		if (uncompressed_block_size > output_block_size) 
-			output_block_size = uncompressed_block_size;
-
-		uncompressed_length += uncompressed_block_size;
-		input->curr = block_base + compressed_block_size;
-		output_count++;
+		
+		// Read the compressed block size
+		block_start += (*input->curr & 0xFF) |
+						((*(input->curr + 1) & 0xFF) << 8) |
+						((*(input->curr + 2) & 0xFF) << 16) |
+						((*(input->curr + 3) & 0xFF) << 24);
+		input->curr += sizeof(uint32_t);
 	}
-
+	
 	// Check that uncompressed length is within the max we can store
-	if (uncompressed_length > output->max)
+	if (dlength > output->max)
 		return -SNAPPY_BUFFER_TOO_SMALL;
 
-	// Reset input->curr pointer
-	input->curr = input->buffer;
- 
 	// Allocate output buffer
-	output->buffer = malloc(ALIGN(uncompressed_length, 8) | BITMASK(11));
+	output->buffer = malloc(ALIGN(dlength, 8) | BITMASK(11));
 	output->curr = output->buffer;
-	output->length = uncompressed_length;
+	output->length = dlength;
 
 	return SNAPPY_OK;
 }
@@ -188,66 +182,55 @@ uint32_t read_long_literal_size(struct host_buffer_context *input, uint32_t len)
 snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
 {
 	while (input->curr < (input->buffer + input->length)) {
-		uint32_t compressed_block_size, uncompressed_block_size;
+		uint16_t length;
+		uint32_t offset;
+		const uint8_t tag = *input->curr++;
+		//printf("Got tag byte 0x%x at index 0x%lx\n", tag, input->curr - input->buffer - 1);
 
-		// Read the compressed block size of the current block
-		read_length_host(input, &compressed_block_size);
-		uint8_t *block_end = input->curr + compressed_block_size;
-
-		// Read the decompressed block size to get correct input->curr position
-		read_length_host(input, &uncompressed_block_size);
-
-		while (input->curr != block_end) {
-			uint16_t length;
-			uint32_t offset;
-			const uint8_t tag = *input->curr++;
-			//printf("Got tag byte 0x%x at index 0x%lx\n", tag, input->curr - input->buffer - 1);
-
-			/* There are two types of elements in a Snappy stream: Literals and
-			copies (backreferences). Each element starts with a tag byte,
-			and the lower two bits of this tag byte signal what type of element
-			will follow. */
-			switch (GET_ELEMENT_TYPE(tag))
-			{
-			case EL_TYPE_LITERAL:
-				/* For literals up to and including 60 bytes in length, the upper
-				 * six bits of the tag byte contain (len-1). The literal follows
-				 * immediately thereafter in the bytestream. 
-				 */
-				length = GET_LENGTH_2_BYTE(tag) + 1;
-				if (length > 60)
-				{
-					length = read_long_literal_size(input, length - 60) + 1;
-				}
-
-				if (!writer_append_host(input, output, length))
-					return SNAPPY_OUTPUT_ERROR;
-				break;
-
-			/* Copies are references back into previous decompressed data, telling
-			 * the decompressor to reuse data it has previously decoded.
-			 * They encode two values: The _offset_, saying how many bytes back
-			 * from the current position to read, and the _length_, how many bytes
-			 * to copy. 
+		/* There are two types of elements in a Snappy stream: Literals and
+		copies (backreferences). Each element starts with a tag byte,
+		and the lower two bits of this tag byte signal what type of element
+		will follow. */
+		switch (GET_ELEMENT_TYPE(tag))
+		{
+		case EL_TYPE_LITERAL:
+			/* For literals up to and including 60 bytes in length, the upper
+			 * six bits of the tag byte contain (len-1). The literal follows
+			 * immediately thereafter in the bytestream. 
 			 */
-			case EL_TYPE_COPY_1:
-				length = GET_LENGTH_1_BYTE(tag) + 4;
-				offset = make_offset_1_byte(tag, input);
-				write_copy_host(output, length, offset);
-				break;
-
-			case EL_TYPE_COPY_2:
-				length = GET_LENGTH_2_BYTE(tag) + 1;
-				offset = make_offset_2_byte(tag, input);
-				write_copy_host(output, length, offset);
-				break;
-
-			case EL_TYPE_COPY_4:
-				length = GET_LENGTH_2_BYTE(tag) + 1;
-				offset = make_offset_4_byte(tag, input);
-				write_copy_host(output, length, offset);
-				break;
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			if (length > 60)
+			{
+				length = read_long_literal_size(input, length - 60) + 1;
 			}
+
+			if (!writer_append_host(input, output, length))
+				return SNAPPY_OUTPUT_ERROR;
+			break;
+
+		/* Copies are references back into previous decompressed data, telling
+		 * the decompressor to reuse data it has previously decoded.
+		 * They encode two values: The _offset_, saying how many bytes back
+		 * from the current position to read, and the _length_, how many bytes
+		 * to copy. 
+		 */
+		case EL_TYPE_COPY_1:
+			length = GET_LENGTH_1_BYTE(tag) + 4;
+			offset = make_offset_1_byte(tag, input);
+			write_copy_host(output, length, offset);
+			break;
+
+		case EL_TYPE_COPY_2:
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			offset = make_offset_2_byte(tag, input);
+			write_copy_host(output, length, offset);
+			break;
+
+		case EL_TYPE_COPY_4:
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			offset = make_offset_4_byte(tag, input);
+			write_copy_host(output, length, offset);
+			break;
 		}
 	}
 
@@ -269,20 +252,26 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	DPU_FOREACH(dpus, dpu) {
 		break;
 	}
+	
+	// Calculate input length without header
+	uint32_t input_length = input->length - (input->curr - input->buffer);
 
-	// Set up and run the program on the DPU
-	uint32_t aligned_output_length = ALIGN(output->length, 8); // Enforces final MRAM write to be multiple of 8
+	// Calculate aligned output length, enforces final MRAM write to be multiple of 8
+	uint32_t aligned_output_length = ALIGN(output->length, 8);
+
+	// Calculate starting buffer positions in MRAM
 	uint32_t input_buffer_start = 1024 * 1024;
 	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
-
+	
+	// Set up and load the DPU program
 	DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
-	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
+	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset, sizeof(uint32_t) * NR_TASKLETS));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset, sizeof(uint32_t) * NR_TASKLETS));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &aligned_output_length, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->buffer, ALIGN(input->length, 8), 0));
+	DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr, ALIGN(input_length, 8), 0));
 	
 	int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
 	if (ret != 0)

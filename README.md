@@ -1,15 +1,17 @@
 # PIM-compression
-General-purpose compression algorithms in memory
+General-purpose compression algorithms in memory.
 
 __Test Files__
+
 There are several test files in the 'test' directory. Each file is in uncompressed form, as well as compressed form using each of the implemented algorithms. The smallest files are good for manual debugging during the initial stages of implementation. The medium size files are for getting some confidence that corner cases are implemented correctly. The largest files are good for benchmarking performance under various scenarios and testing memory bounds in WRAM and MRAM.
 
 * __alice__ (312 bytes) - some text from 'Alice In Wonderland'
 * __coding__ (9423 bytes) - the Linux coding standard
-* __terror2__ (105438 bytes) - some text from the 'Terrorists Handbook'
-* __asyoulik__ (125179 bytes) - some text from Shakespeare's As You Like It
-* __plarbn12__ (481861 bytes) - some poetry
-* [missing] (~1MB) - 10x larger than the 100KB test for more data points in scalability measurements
+* __terror2__ (105,438 bytes) - some text from the 'Terrorists Handbook'
+* __asyoulik__ (125,179 bytes) - some text from Shakespeare's As You Like It
+* __plarbn12__ (481,861 bytes) - some poetry
+* __world192__ (1,150,480 bytes) - some text from the CIA World Fact Book
+* __xml__ (5,345,280 bytes) - collected XML files from Silesia Corpus
 * [missing] (~64MB) - to stress out the maximum size of MRAM for the DPU
   
 ## Snappy

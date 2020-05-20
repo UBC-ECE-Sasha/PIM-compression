@@ -5,23 +5,29 @@ This is an altered version of the C port of Google's Snappy compressor, ported b
 * Removal of the decompression code, documentation generation, benchmark tool, random test and fuzzer test tools.
 * Added argument to change the block input size that is used by Snappy.
 * Changed format of compressed file to allow for multi-threaded decompression:
-  * __Original Format:__
+  * __Original Format:__ compressed file consists of the decompressed length followed by the compressed data. During compression, the input file is broken into 64K chunks and each chunk is compressed separately. This results in independent compressed blocks in the output file. However, it is not possible to determine where each compressed block starts and ends, as there is no identifier for the start of a new block or indication for how long each compessed block is. 
 	```
 	<START FILE>
-		<DECOMPRESSED LENGTH>
+		<DECOMPRESSED LENGTH (varint)>
 		<COMPRESSED DATA>
+			<BLOCK 1>
+			<BLOCK 2>
+			...
 	<END FILE>
 	```
-  * __Altered Format:__ compressed file consists of blocks that are individually compressed (rather than the whole file being compressed) and the compressed length of each block is pre-pended. Note that the compressed length includes the length taken up by storing the decompressed length plus the actual data itself.
+  * __Altered Format:__ start of the compressed file is provided with more information to allow for determining where each compressed block is. This allows for a multi-threaded solution, because the compressed file can be broken up into independent pieces and parsed separately.
 	```
 	<START FILE>
-		<SNAPPY BLOCK 1: COMPRESSED LENGTH>
-			<DECOMPRESSED LENGTH>
-			<COMPRESSED DATA>
-		<SNAPPY BLOCK 2: COMPRESSED LENGTH>
-			<DECOMPRESSED LENGTH>
-			<COMPRESSED DATA>
-		...
+		<DECOMPRESSED LENGTH (varint)>
+		<DECOMPRESSED BLOCK SIZE (varint)>
+		<COMPRESSED LENGTHS>
+			<BLOCK 1 (int)>
+			<BLOCK 2 (int)>
+			...
+		<COMPRESSED DATA>
+			<BLOCK 1>
+			<BLOCK 2>
+			...
 	<END FILE>
 	```
 

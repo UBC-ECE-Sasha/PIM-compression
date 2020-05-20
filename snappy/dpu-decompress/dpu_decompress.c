@@ -54,22 +54,6 @@ static uint32_t make_offset_4_byte(uint8_t tag, struct in_buffer_context *input)
 /***************************
  * Reader & writer helpers *
  ***************************/
-static bool read_length_dpu(struct in_buffer_context *input, uint32_t *len) 
-{
-	int shift = 0;
-	*len = 0;
-
-	for (uint8_t count = 0; count < 4; count++) {
-		uint8_t c = READ_BYTE(input);
-		*len |= (c & BITMASK(7)) << shift;
-
-		if (!(c & (1 << 7)))
-			return true;
-		shift += 7;
-	}
-	return false;
-}
-
 uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 {
 	if ((input->curr + len) >= input->length)
@@ -217,61 +201,51 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 	dbg_printf("output length: %u\n", output->length);
 	while (input->curr < input->length) 
 	{
-		uint32_t compressed_block_size, uncompressed_block_size;
-		
-		// Read the compressed and uncompressed block size of current block
-		read_length_dpu(input, &compressed_block_size);
-		uint32_t end_block = input->curr + compressed_block_size;
+		uint32_t length;
+		uint32_t offset;
+		uint8_t tag;
+		tag = READ_BYTE(input);
+		dbg_printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - 1);
+		// There are two types of elements in a Snappy stream: Literals and
+		// copies (backreferences). Each element starts with a tag byte,
+		// and the lower two bits of this tag byte signal what type of element
+		// will follow.
+		switch (GET_ELEMENT_TYPE(tag))
+		{
+		case EL_TYPE_LITERAL:
+			// For literals up to and including 60 bytes in length, the upper
+			// six bits of the tag byte contain (len-1). The literal follows
+			// immediately thereafter in the bytestream.
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			if (length > 60)
+				length = read_long_literal_size(input, length - 60) + 1;
 
-		read_length_dpu(input, &uncompressed_block_size);
-		
-		while (input->curr < end_block) {
-			uint32_t length;
-			uint32_t offset;
-			uint8_t tag;
-			tag = READ_BYTE(input);
-			dbg_printf("Got tag byte 0x%x at index 0x%x\n", tag, input->curr - 1);
-			// There are two types of elements in a Snappy stream: Literals and
-			// copies (backreferences). Each element starts with a tag byte,
-			// and the lower two bits of this tag byte signal what type of element
-			// will follow.
-			switch (GET_ELEMENT_TYPE(tag))
-			{
-			case EL_TYPE_LITERAL:
-				// For literals up to and including 60 bytes in length, the upper
-				// six bits of the tag byte contain (len-1). The literal follows
-				// immediately thereafter in the bytestream.
-				length = GET_LENGTH_2_BYTE(tag) + 1;
-				if (length > 60)
-					length = read_long_literal_size(input, length - 60) + 1;
-	
-				if (!writer_append_dpu(input, output, length))
-					return SNAPPY_OUTPUT_ERROR;
-				break;
+			if (!writer_append_dpu(input, output, length))
+				return SNAPPY_OUTPUT_ERROR;
+			break;
 
-			// Copies are references back into previous decompressed data, telling
-			// the decompressor to reuse data it has previously decoded.
-			// They encode two values: The _offset_, saying how many bytes back
-			// from the current position to read, and the _length_, how many bytes
-			// to copy.
-			case EL_TYPE_COPY_1:
-				length = GET_LENGTH_1_BYTE(tag) + 4;
-				offset = make_offset_1_byte(tag, input);
-				write_copy_dpu(output, length, offset);
-				break;
+		// Copies are references back into previous decompressed data, telling
+		// the decompressor to reuse data it has previously decoded.
+		// They encode two values: The _offset_, saying how many bytes back
+		// from the current position to read, and the _length_, how many bytes
+		// to copy.
+		case EL_TYPE_COPY_1:
+			length = GET_LENGTH_1_BYTE(tag) + 4;
+			offset = make_offset_1_byte(tag, input);
+			write_copy_dpu(output, length, offset);
+			break;
 
-			case EL_TYPE_COPY_2:
-				length = GET_LENGTH_2_BYTE(tag) + 1;
-				offset = make_offset_2_byte(tag, input);
-				write_copy_dpu(output, length, offset);
-				break;
+		case EL_TYPE_COPY_2:
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			offset = make_offset_2_byte(tag, input);
+			write_copy_dpu(output, length, offset);
+			break;
 
-			case EL_TYPE_COPY_4:
-				length = GET_LENGTH_2_BYTE(tag) + 1;
-				offset = make_offset_4_byte(tag, input);
-				write_copy_dpu(output, length, offset);
-				break;
-			}
+		case EL_TYPE_COPY_4:
+			length = GET_LENGTH_2_BYTE(tag) + 1;
+			offset = make_offset_4_byte(tag, input);
+			write_copy_dpu(output, length, offset);
+			break;
 		}
 	}
 
