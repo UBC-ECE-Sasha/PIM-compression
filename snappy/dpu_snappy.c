@@ -85,7 +85,7 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 	input->curr = input->buffer;
  
 	// Allocate output buffer
-	output->buffer = malloc(uncompressed_length | BITMASK(11));
+	output->buffer = malloc(ALIGN(uncompressed_length, 8) | BITMASK(11));
 	output->curr = output->buffer;
 	output->length = uncompressed_length;
 
@@ -262,7 +262,6 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 {
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;
-	uint64_t res_size = 0;
 	
 	// Allocate a DPU
 	DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
@@ -271,15 +270,19 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 		break;
 	}
 
-	// Must be a multiple of 8 to ensure the last write to MRAM is also a multiple of 8
-	uint32_t output_length = (output->length + 7) & ~7;
+	// Set up and run the program on the DPU
+	uint32_t aligned_output_length = ALIGN(output->length, 8); // Enforces final MRAM write to be multiple of 8
+	uint32_t input_buffer_start = 1024 * 1024;
+	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
 
 	DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, input->buffer, input->length));
+	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset, sizeof(uint32_t) * NR_TASKLETS));
 	DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset, sizeof(uint32_t) * NR_TASKLETS));
-	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &aligned_output_length, sizeof(uint32_t)));
+	DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
+	DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->buffer, ALIGN(input->length, 8), 0));
 	
 	int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
 	if (ret != 0)
@@ -289,13 +292,7 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	// Get the results back from the DPU 
-	DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, output->buffer, output->length));
-
-	// Uncompressed size might be too big to read back to host
-	if (res_size > BUF_SIZE) {
-		printf("uncompressed file is too big (%ld > %d)\n", res_size, BUF_SIZE);
-		exit(EXIT_FAILURE);
-	}
+	DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer, output_buffer_start, aligned_output_length, 0));
 
 	// Deallocate the DPUs
 	DPU_FOREACH(dpus, dpu) {
@@ -332,7 +329,7 @@ static int read_input_host(char *in_file, struct host_buffer_context *input)
 		return 1;
 	}
 
-	input->buffer = malloc(input->length * sizeof(*(input->buffer)));
+	input->buffer = malloc(ALIGN(input->length, 8) * sizeof(*(input->buffer)));
 	input->curr = input->buffer;
 	size_t n = fread(input->buffer, sizeof(*(input->buffer)), input->length, fin);
 	fclose(fin);

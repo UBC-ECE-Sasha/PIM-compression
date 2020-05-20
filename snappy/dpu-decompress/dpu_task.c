@@ -10,9 +10,8 @@ __host uint32_t input_length;
 __host uint32_t output_length;
 __host uint32_t input_offset[NR_TASKLETS];
 __host uint32_t output_offset[NR_TASKLETS];
-
-__mram_noinit uint8_t input_buffer[MAX_FILE_LENGTH];
-__mram_noinit uint8_t output_buffer[MAX_FILE_LENGTH];
+__host __mram_ptr uint8_t *input_buffer;
+__host __mram_ptr uint8_t *output_buffer;
 
 int main()
 {
