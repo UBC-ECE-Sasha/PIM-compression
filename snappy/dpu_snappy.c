@@ -9,8 +9,6 @@
 
 #define DPU_DECOMPRESS_PROGRAM "dpu-decompress/decompress.dpu"
 
-#define BUF_SIZE (1 << 10)
-
 const char options[]="di:o:";
 
 static bool read_varint32(struct host_buffer_context *input, uint32_t *len)
@@ -39,10 +37,12 @@ static bool read_varint32(struct host_buffer_context *input, uint32_t *len)
  * @param input_offset: holds starting input offset of each DPU tasklet
  * @param output_offset: holds starting output offset of each DPU tasklet
  */
-static snappy_status setup_output_descriptor(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_TASKLETS], uint32_t output_offset[NR_TASKLETS])
+static snappy_status setup_output_descriptor(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_DPUS][NR_TASKLETS], uint32_t output_offset[NR_DPUS][NR_TASKLETS])
 {
-	uint32_t idx = 0;
-	uint32_t input_size_per_task = input->length / NR_TASKLETS;
+	uint32_t dpu_idx = 0;
+	uint32_t task_idx = 0;
+	uint32_t input_size_per_dpu = input->length / NR_DPUS;
+	uint32_t input_size_per_task = input_size_per_dpu / NR_TASKLETS;
 
 	// Read the decompressed length
 	uint32_t dlength;
@@ -54,30 +54,40 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 	if (!read_varint32(input, &dblock_size))
 		return SNAPPY_BUFFER_TOO_SMALL;
 
-	uint32_t block_start = 0;
+	uint32_t total_offset = 0;
+	uint32_t task_offset = 0;
 	uint32_t num_blocks = dlength / dblock_size + (dlength % dblock_size != 0);
 	for (uint32_t i = 0; i < num_blocks; i++) {
-		// If we have reached a new boundary, log the offset of this block
-		// in the input_offset and output_offset arrays. This should roughly 
-		// evenly divide the work between NR_TASKLETS tasks.
-		if (block_start >= (input_size_per_task * idx)) {
-			input_offset[idx] = block_start;
-			output_offset[idx] = i * dblock_size;
-			idx++;
+		// If we have reached the next DPU's boundary, update the index
+		if (total_offset > (input_size_per_dpu * (dpu_idx + 1))) {
+			dpu_idx++;
+			task_idx = 0;
+			task_offset = 0;
+		}
+
+		// If we have reached the next task's boundary, log the offset
+		// to the input_offset and output_offset arrays. This should roughly
+		// evenly divide the work between NR_TASKLETS tasks on NR_DPUS.
+		if (task_offset >= (input_size_per_task * task_idx)) {
+			input_offset[dpu_idx][task_idx] = total_offset;
+			output_offset[dpu_idx][task_idx] = i * dblock_size;
+			task_idx++;
 		}
 		
 		// Read the compressed block size
-		block_start += (*input->curr & 0xFF) |
-						((*(input->curr + 1) & 0xFF) << 8) |
-						((*(input->curr + 2) & 0xFF) << 16) |
-						((*(input->curr + 3) & 0xFF) << 24);
+		uint32_t next_block_size = (*input->curr & 0xFF) |
+					((*(input->curr + 1) & 0xFF) << 8) |
+					((*(input->curr + 2) & 0xFF) << 16) |
+					((*(input->curr + 3) & 0xFF) << 24);
+		total_offset += next_block_size;
+		task_offset += next_block_size;
 		input->curr += sizeof(uint32_t);
 	}
 	
 	// Check that uncompressed length is within the max we can store
 	if (dlength > output->max)
 		return -SNAPPY_BUFFER_TOO_SMALL;
-
+	
 	// Allocate output buffer
 	output->buffer = malloc(ALIGN(dlength, 8) | BITMASK(11));
 	output->curr = output->buffer;
@@ -241,51 +251,73 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
  * Prepare the DPU context by copying the buffer to be decompressed and
  * uploading the program to the DPU.
  */
-snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_TASKLETS], uint32_t output_offset[NR_TASKLETS])
+snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_DPUS][NR_TASKLETS], uint32_t output_offset[NR_DPUS][NR_TASKLETS])
 {
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;
 	
 	// Allocate a DPU
-	DPU_ASSERT(dpu_alloc(1, NULL, &dpus));
+	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 
-	DPU_FOREACH(dpus, dpu) {
-		break;
-	}
-	
-	// Calculate input length without header
-	uint32_t input_length = input->length - (input->curr - input->buffer);
-
-	// Calculate aligned output length, enforces final MRAM write to be multiple of 8
+	// Calculate input length without header and aligned output length
+	uint32_t total_input_length = input->length - (input->curr - input->buffer);
 	uint32_t aligned_output_length = ALIGN(output->length, 8);
 
-	// Calculate starting buffer positions in MRAM
+	uint32_t dpu_idx = 0;
+	uint32_t input_length;
+	uint32_t output_length;
+	
 	uint32_t input_buffer_start = 1024 * 1024;
-	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
+	uint32_t output_buffer_start;
+	DPU_FOREACH(dpus, dpu) {
+		// Calculate input and output lengths for each DPU
+		if (dpu_idx == (NR_DPUS - 1)) {
+			input_length = total_input_length - input_offset[dpu_idx][0];
+			output_length = aligned_output_length - output_offset[dpu_idx][0];
+		}
+		else {
+			input_length = input_offset[dpu_idx + 1][0] - input_offset[dpu_idx][0];
+			output_length = output_offset[dpu_idx + 1][0] - output_offset[dpu_idx][0];
+		}
+
+		// Calculate starting buffer positions in MRAM
+		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
+		
+		// Set up and load the DPU program
+		DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
+		DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
 	
-	// Set up and load the DPU program
-	DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
-	DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset, sizeof(uint32_t) * NR_TASKLETS));
-	DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset, sizeof(uint32_t) * NR_TASKLETS));
-	DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &aligned_output_length, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
-	DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr, ALIGN(input_length, 8), 0));
+		dpu_idx++;
+	}
 	
-	int ret = dpu_launch(dpu, DPU_SYNCHRONOUS);
+	// Launch all DPUs
+	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
 	if (ret != 0)
 	{
 		DPU_ASSERT(dpu_free(dpus));
 		return SNAPPY_INVALID_INPUT;
 	}
 
-	// Get the results back from the DPU 
-	DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer, output_buffer_start, aligned_output_length, 0));
-
 	// Deallocate the DPUs
+	dpu_idx = 0;
 	DPU_FOREACH(dpus, dpu) {
+		// Get the results back from the DPU
+		DPU_ASSERT(dpu_copy_from(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+
+		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
+		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer + output_offset[dpu_idx][0], output_buffer_start, output_length, 0));
+
+		printf("------DPU %d Logs------\n", dpu_idx);
 		DPU_ASSERT(dpu_log_read(dpu, stdout));
+
+		dpu_idx++;
 	}
 
 	DPU_ASSERT(dpu_free(dpus));
@@ -417,8 +449,8 @@ int main(int argc, char **argv)
 	if (read_input_host(input_file, &input))
 		return 1;
 
-	uint32_t input_offset[NR_TASKLETS] = {0};
-	uint32_t output_offset[NR_TASKLETS] = {0};
+	uint32_t input_offset[NR_DPUS][NR_TASKLETS] = {0};
+	uint32_t output_offset[NR_DPUS][NR_TASKLETS] = {0};
 	status = setup_output_descriptor(&input, &output, input_offset, output_offset);
 	
 	if (use_dpu)

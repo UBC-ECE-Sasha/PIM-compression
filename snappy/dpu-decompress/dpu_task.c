@@ -19,15 +19,23 @@ int main()
 	struct out_buffer_context output;
 	uint8_t idx = me();
 
+	printf("DPU starting, tasklet %d\n", idx);
+	
 	if (input_length > MAX_FILE_LENGTH)
 	{
 		printf("Input length is too big: max=%i\n", MAX_FILE_LENGTH);
 		return -2;
 	}
 
+	// Check that this tasklet has work to run 
+	if ((idx != 0) && (input_offset[idx] == 0)) {
+		printf("Tasklet %d has nothing to run\n", idx);
+		return 0;
+	}
+
 	// Prepare the input and output descriptors
-	uint32_t input_start = input_offset[idx];
-	uint32_t output_start = output_offset[idx];
+	uint32_t input_start = input_offset[idx] - input_offset[0];
+	uint32_t output_start = output_offset[idx] - output_offset[0];
 
 	input.cache = seqread_alloc();
 	input.ptr = seqread_init(input.cache, input_buffer + input_start, &input.sr);
@@ -44,25 +52,27 @@ int main()
 
 	// Calculate the actual length this tasklet parses
 	if (idx < (NR_TASKLETS - 1)) {
-		uint32_t input_end = input_offset[idx + 1];
-		uint32_t output_end = output_offset[idx + 1];
+		int32_t input_end = input_offset[idx + 1] - input_offset[0];
+		int32_t output_end = output_offset[idx + 1] - output_offset[0];
 
-		input.length = input_end - input_start;
-		output.length = output_end - output_start;
-		
-		if (((idx == 0) || (input_start != 0)) && (input_end == 0)) {
+		// If the end position is negative, then the next task has no work
+		// to run. Use the remainder of the input length to calculate this
+		// task's length.
+		if ((input_end <= 0) || (output_end <= 0)) {
 			input.length = input_length - input_start;
 			output.length = output_length - output_start;
 		}
+		else {
+			input.length = input_end - input_start;
+			output.length = output_end - output_start;
+		}
 	}
-	else if ((idx == 0) || (input_start != 0)) {
+	else {
 		input.length = input_length - input_start;
 		output.length = output_length - output_start;
 	} 
 	
-	printf("DPU starting, tasklet %d\n", idx);
 	perfcounter_config(COUNT_CYCLES, true);
-	
 	if (input.length != 0) {
 		// Do the uncompress
 		if (dpu_uncompress(&input, &output))

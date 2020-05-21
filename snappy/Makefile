@@ -7,7 +7,8 @@ ifeq ($(DEBUG), 1)
 	CFLAGS+=-DDEBUG
 endif
 
-# Default NR_TASKLETS
+# Default Parameters
+NR_DPUS = 1
 NR_TASKLETS = 16
 
 SOURCE = dpu_snappy.c
@@ -28,7 +29,7 @@ dpu:
 host: decompress
 	
 decompress: $(SOURCE)
-	$(CC) $(CFLAGS) -DNR_TASKLETS=$(NR_TASKLETS) $^ -o $@ $(DPU_OPTS)
+	$(CC) $(CFLAGS) -DNR_DPUS=$(NR_DPUS) -DNR_TASKLETS=$(NR_TASKLETS) $^ -o $@ $(DPU_OPTS)
 
 tags:
 	ctags -R -f tags . /usr/share/upmem/include
