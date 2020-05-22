@@ -14,7 +14,7 @@
 #define GET_LENGTH_2_BYTE(_tag) ((_tag >> 2) & BITMASK(6))
 
 // Max length of the input and output files
-#define MAX_FILE_LENGTH 0x1000000
+#define MAX_FILE_LENGTH 0x10000000
 
 /*
  * Return values; see the documentation for each function to know

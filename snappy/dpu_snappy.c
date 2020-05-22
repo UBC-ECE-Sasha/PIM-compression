@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <time.h>
 
 #include "dpu_snappy.h"
 
@@ -177,16 +178,12 @@ uint32_t read_long_literal_size(struct host_buffer_context *input, uint32_t len)
 {
 	if ((input->curr + len) >= (input->buffer + input->length))
 		return 0;
-	else {
-		uint32_t bitmask = 0;
-		for (uint32_t i = 0; i < len; i++) {
-			bitmask |= (0xFF << i);
-		}
-
-		uint32_t size = (*((uint32_t *)input->curr)) & bitmask;
-		input->curr += len;
-		return size;
+	
+	uint32_t size = 0;	
+	for (uint32_t i = 0; i < len; i++) {
+		size |= (*input->curr++ << (i << 3));
 	}
+	return size;
 }
 
 snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
@@ -463,7 +460,12 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+		clock_t start, end;
+
+		start = clock();
 		status = snappy_uncompress_host(&input, &output);
+		end = clock();
+		printf("Host completed in %f seconds\n", ((double)(end - start) / CLOCKS_PER_SEC));
 	}
 
 	if (status == SNAPPY_OK)

@@ -12,6 +12,7 @@ There are several test files in the 'test' directory. Each file is in uncompress
 * __plarbn12__ (481,861 bytes) - some poetry
 * __world192__ (1,150,480 bytes) - some text from the CIA World Fact Book
 * __xml__ (5,345,280 bytes) - collected XML files from Silesia Corpus
+* __dickens__ (10,192,446 bytes) - collected works of Charles Dickens
 * [missing] (~64MB) - to stress out the maximum size of MRAM for the DPU
   
 ## Snappy
