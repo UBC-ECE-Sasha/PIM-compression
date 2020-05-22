@@ -8,7 +8,9 @@ Compression is done on the host CPU, decompression on DPU.
 
 `make` to build both the host and DPU programs. 
 
-The default number of DPUs used is 1 and the default number of DPU tasklets is 16. To override the default use `make NR_DPUS<# dpus> NR_TASKLETS=<# tasks>`.
+The default number of DPUs used is 1 and the default number of DPU tasklets is 16. To override the default use:
+
+`make NR_DPUS=<# dpus> NR_TASKLETS=<# tasks>`.
 
 ## Test
 
