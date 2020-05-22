@@ -17,7 +17,7 @@ static bool read_varint32(struct host_buffer_context *input, uint32_t *len)
 	*len = 0;
 	
 	for (uint8_t count = 0; count < sizeof(uint32_t); count++) {
-		uint8_t c = (*input->curr++);
+		int8_t c = (int8_t)(*input->curr++);
 		*len |= (c & BITMASK(7)) << shift;
 		if (!(c & (1 << 7)))
 			return true;
