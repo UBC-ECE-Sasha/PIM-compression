@@ -258,7 +258,7 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	
 	// Allocate a DPU
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
-
+	
 	// Calculate input length without header and aligned output length
 	uint32_t total_input_length = input->length - (input->curr - input->buffer);
 	uint32_t aligned_output_length = ALIGN(output->length, 8);
@@ -271,15 +271,19 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 	uint32_t output_buffer_start;
 	DPU_FOREACH(dpus, dpu) {
 		// Calculate input and output lengths for each DPU
-		if (dpu_idx == (NR_DPUS - 1)) {
+		if ((dpu_idx != (NR_DPUS - 1)) && (input_offset[dpu_idx + 1][0] != 0)) {
+			input_length = input_offset[dpu_idx + 1][0] - input_offset[dpu_idx][0];
+			output_length = output_offset[dpu_idx + 1][0] - output_offset[dpu_idx][0];
+		}
+		else if ((dpu_idx == 0) || (input_offset[dpu_idx][0] != 0)) {
 			input_length = total_input_length - input_offset[dpu_idx][0];
 			output_length = aligned_output_length - output_offset[dpu_idx][0];
 		}
 		else {
-			input_length = input_offset[dpu_idx + 1][0] - input_offset[dpu_idx][0];
-			output_length = output_offset[dpu_idx + 1][0] - output_offset[dpu_idx][0];
+			input_length = 0;
+			output_length = 0;
 		}
-
+		
 		// Calculate starting buffer positions in MRAM
 		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
 		
@@ -292,7 +296,7 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
-	
+		
 		dpu_idx++;
 	}
 	
