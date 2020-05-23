@@ -139,26 +139,25 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 		mram_read(&output->buffer[need_window], output->read_ptr, OUT_BUFFER_LENGTH);
 	// Else use the existing read window
 
-	output->read_window = need_window;
-
 	uint32_t curr_index = output->curr - output->append_window;
 	while (copy_length)
 	{
+
 		// if we are past the append window, write the current window back to MRAM and start a new one
 		if (curr_index >= OUT_BUFFER_LENGTH)
 		{
 			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-			output->append_window += OUT_BUFFER_LENGTH;
-			curr_index = 0;
-
-			// if we are writing back the current append buffer, but also dependent on the append buffer
+						// if we are writing back the current append buffer, but also dependent on the append buffer
 			// for the read window, we must keep a copy of the data for reading
 			if (src_ptr == output->append_ptr)
 			{
 				memcpy(output->read_ptr, output->append_ptr, OUT_BUFFER_LENGTH);
 				src_ptr = output->read_ptr;
 			}
+		
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index = 0;
 		}
 
 		// if we are past the read window, load the next one
@@ -175,7 +174,6 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 			else
 			{
 				mram_read(&output->buffer[need_window], output->read_ptr, OUT_BUFFER_LENGTH);
-				output->read_window = need_window;
 				src_ptr = output->read_ptr;
 			}
 			read_index = 0;
@@ -185,6 +183,9 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 		output->curr++;
 		copy_length--;
 	}
+
+	// Update read window for next time this function is called	
+	output->read_window = need_window;
 }
 
 /**************************
