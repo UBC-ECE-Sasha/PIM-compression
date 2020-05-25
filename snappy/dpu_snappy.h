@@ -14,7 +14,7 @@
 #define GET_LENGTH_2_BYTE(_tag) ((_tag >> 2) & BITMASK(6))
 
 // Max length of the input and output files
-#define MAX_FILE_LENGTH (NR_DPUS * 0x1000000)
+#define MAX_FILE_LENGTH 0x1000000
 
 /*
  * Return values; see the documentation for each function to know
@@ -43,7 +43,7 @@ typedef struct host_buffer_context
 	uint8_t *buffer;
 	uint8_t *curr;
 	uint32_t length;
-	uint32_t max;
+	unsigned long max;
 } host_buffer_context;
 
 #endif	/* _DPU_SNAPPY_H_ */

@@ -346,7 +346,7 @@ static int read_input_host(char *in_file, struct host_buffer_context *input)
 	fseek(fin, 0, SEEK_SET);
 
 	if (input->length > input->max) {
-		fprintf(stderr, "input_size is too big (%d > %d)\n",
+		fprintf(stderr, "input_size is too big (%d > %ld)\n",
 				input->length, input->max);
 		return 1;
 	}
@@ -405,11 +405,11 @@ int main(int argc, char **argv)
 
 	input.buffer = NULL;
 	input.length = 0;
-	input.max = MAX_FILE_LENGTH;
+	input.max = NR_DPUS * (unsigned long)MAX_FILE_LENGTH;
 
 	output.buffer = NULL;
 	output.length = 0;
-	output.max = MAX_FILE_LENGTH;
+	output.max = NR_DPUS * (unsigned long)MAX_FILE_LENGTH;
 
 	while ((opt = getopt(argc, argv, options)) != -1)
 	{
