@@ -24,7 +24,7 @@ clean:
 	$(MAKE) -C dpu-decompress $@
 
 dpu:
-	DEBUG=$(DEBUG) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-decompress
+	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-decompress
 
 host: decompress
 	

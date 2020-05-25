@@ -2,6 +2,7 @@ CC           = dpu-upmem-dpurte-clang
 CFLAGS       = -O2 -flto -g -Wall
 
 STACK_SIZE_DEFAULT = 256
+CFLAGS += -DNR_DPUS=$(NR_DPUS)
 CFLAGS += -DNR_TASKLETS=$(NR_TASKLETS)
 CFLAGS += -DSTACK_SIZE_DEFAULT=$(STACK_SIZE_DEFAULT)
 

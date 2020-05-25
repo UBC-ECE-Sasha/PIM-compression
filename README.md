@@ -8,11 +8,13 @@ There are several test files in the 'test' directory. Each file is in uncompress
 * __alice__ (312 bytes) - some text from 'Alice In Wonderland'
 * __coding__ (9423 bytes) - the Linux coding standard
 * __terror2__ (105,438 bytes) - some text from the 'Terrorists Handbook'
-* __asyoulik__ (125,179 bytes) - some text from Shakespeare's As You Like It
 * __plarbn12__ (481,861 bytes) - some poetry
 * __world192__ (1,150,480 bytes) - some text from the CIA World Fact Book
 * __xml__ (5,345,280 bytes) - collected XML files from Silesia Corpus
 * __dickens__ (10,192,446 bytes) - collected works of Charles Dickens
+* __nci__ (33,553,445 bytes) - chemical database of structures
+* __mozilla__ (51,220,480 bytes) - tarred executables of Mozilla 1.0
+* __spamfile__ (84,217,482 bytes) - snapshot of collected spam emails
 * [missing] (~64MB) - to stress out the maximum size of MRAM for the DPU
   
 ## Snappy
