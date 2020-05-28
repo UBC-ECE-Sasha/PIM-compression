@@ -9,6 +9,7 @@
 #include "dpu_snappy.h"
 
 #define DPU_DECOMPRESS_PROGRAM "dpu-decompress/decompress.dpu"
+#define TOTAL_NR_TASKLETS (NR_DPUS * NR_TASKLETS)
 
 const char options[]="di:o:";
 
@@ -42,8 +43,6 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 {
 	uint32_t dpu_idx = 0;
 	uint32_t task_idx = 0;
-	uint32_t input_size_per_dpu = input->length / NR_DPUS;
-	uint32_t input_size_per_task = input_size_per_dpu / NR_TASKLETS;
 
 	// Read the decompressed length
 	uint32_t dlength;
@@ -55,33 +54,35 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 	if (!read_varint32(input, &dblock_size))
 		return SNAPPY_BUFFER_TOO_SMALL;
 
+	uint32_t num_blocks = (dlength + dblock_size - 1) / dblock_size;
+	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
+	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
+
+	uint32_t task_blocks = 0;
 	uint32_t total_offset = 0;
-	uint32_t task_offset = 0;
-	uint32_t num_blocks = dlength / dblock_size + (dlength % dblock_size != 0);
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
-		if (total_offset > (input_size_per_dpu * (dpu_idx + 1))) {
+		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
 			dpu_idx++;
 			task_idx = 0;
-			task_offset = 0;
+			task_blocks = 0;
 		}
 
 		// If we have reached the next task's boundary, log the offset
 		// to the input_offset and output_offset arrays. This should roughly
 		// evenly divide the work between NR_TASKLETS tasks on NR_DPUS.
-		if (task_offset >= (input_size_per_task * task_idx)) {
+		if (task_blocks == (input_blocks_per_task * task_idx)) {
 			input_offset[dpu_idx][task_idx] = total_offset;
 			output_offset[dpu_idx][task_idx] = i * dblock_size;
 			task_idx++;
 		}
 		
 		// Read the compressed block size
-		uint32_t next_block_size = (*input->curr & 0xFF) |
-					((*(input->curr + 1) & 0xFF) << 8) |
-					((*(input->curr + 2) & 0xFF) << 16) |
-					((*(input->curr + 3) & 0xFF) << 24);
-		total_offset += next_block_size;
-		task_offset += next_block_size;
+		total_offset += (*input->curr & 0xFF) |
+				((*(input->curr + 1) & 0xFF) << 8) |
+				((*(input->curr + 2) & 0xFF) << 16) |
+				((*(input->curr + 3) & 0xFF) << 24);
+		task_blocks++;
 		input->curr += sizeof(uint32_t);
 	}
 	
