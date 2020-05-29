@@ -17,12 +17,14 @@ __host __mram_ptr uint8_t *output_buffer;
 __host uint64_t metrics_tasklets_start[NR_TASKLETS];
 __host uint64_t metrics_tasklets_stop[NR_TASKLETS];
 __host bool metrics_tasklets_did_work[NR_TASKLETS];
+__host perfcounter_config_t metrics_perfctr_config;
 
 int main()
 {
 	struct in_buffer_context input;
 	struct out_buffer_context output;
-	perfcounter_config(COUNT_CYCLES, true);
+	/* perfcounter_config(COUNT_CYCLES, true); */
+	perfcounter_config(metrics_perfctr_config, true);
 	uint8_t idx = me();
 
 	/* printf("DPU starting, tasklet %d\n", idx); */
@@ -89,6 +91,7 @@ int main()
 		metrics_tasklets_stop[idx] = perfcounter_get();
 		/* printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get()); */
 		if (ret){
+			printf("Tasklet %d: failed in %ld cycles\n", idx, perfcounter_get());
 			return -1;
 		}
 	}

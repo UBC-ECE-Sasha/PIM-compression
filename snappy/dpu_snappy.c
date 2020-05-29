@@ -6,10 +6,21 @@
 #include <getopt.h>
 #include <time.h>
 
+
 #include "dpu_snappy.h"
 
 #define DPU_DECOMPRESS_PROGRAM "dpu-decompress/decompress.dpu"
 #define TOTAL_NR_TASKLETS (NR_DPUS * NR_TASKLETS)
+
+/* This should be coming from the config but the include isn't working for me. */
+/* #include <perfcounter.h> */
+typedef enum _perfcounter_config_t {
+	COUNT_SAME = 0,
+	COUNT_CYCLES = 1,
+	COUNT_INSTRUCTIONS = 2,
+	COUNT_NOTHING = 3,
+} perfcounter_config_t;
+char* perfctr_enum_to_string[] = {"SAME", "CYCLES", "INSTRUCTIONS", "NOTHING"};
 
 const char options[]="di:o:";
 
@@ -287,6 +298,9 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 			output_length = 0;
 		}
 		
+		/* flip between instructions and cycles on different DPUs */
+		perfcounter_config_t perf_ctr_config = (dpu_idx % 2) == 0 ? COUNT_CYCLES : COUNT_INSTRUCTIONS;
+
 		// Calculate starting buffer positions in MRAM
 		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
 		
@@ -302,6 +316,7 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_copy_to(dpu, "metrics_tasklets_start", 0, metrics_tasklets_start[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to(dpu, "metrics_tasklets_stop", 0, metrics_tasklets_stop[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to(dpu, "metrics_tasklets_did_work", 0, metrics_tasklets_did_work[dpu_idx], sizeof(bool) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_to(dpu, "metrics_perfctr_config", 0, &perf_ctr_config, sizeof(perfcounter_config_t)));
 		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
 		
 		dpu_idx++;
@@ -328,8 +343,12 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_copy_from(dpu, "metrics_tasklets_start", 0, metrics_tasklets_start[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_from(dpu, "metrics_tasklets_stop", 0, metrics_tasklets_stop[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_from(dpu, "metrics_tasklets_did_work", 0, metrics_tasklets_did_work[dpu_idx], sizeof(bool) * NR_TASKLETS));
+		perfcounter_config_t perf_ctr_config = 0;
+		DPU_ASSERT(dpu_copy_from(dpu, "metrics_perfctr_config", 0, &perf_ctr_config, sizeof(perfcounter_config_t)));
 
-		printf("------DPU %d Perf Counter------\n", dpu_idx);
+
+		char* mode = perfctr_enum_to_string[perf_ctr_config];
+		printf("------DPU %d Perf Counter Mode: %s (%d)------\n", dpu_idx, mode, perf_ctr_config);
 		for(int tasklet=0; tasklet<NR_TASKLETS; tasklet++){
 			uint64_t start = metrics_tasklets_start[dpu_idx][tasklet];
 			uint64_t stop = metrics_tasklets_stop[dpu_idx][tasklet];
