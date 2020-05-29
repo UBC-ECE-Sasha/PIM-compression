@@ -33,3 +33,26 @@ decompress: $(SOURCE)
 
 tags:
 	ctags -R -f tags . /usr/share/upmem/include
+
+
+TEST_SNAPPY = $(wildcard ../test/*.snappy)
+TEST_HOST_VERIFIED = $(patsubst ../test/%.snappy,test/%.host_verified,$(TEST_SNAPPY))
+TEST_DPU_VERIFIED = $(patsubst ../test/%.snappy,test/%.dpu_verified,$(TEST_SNAPPY))
+
+.PHONY: test test_dpu test_host
+test: test_host test_dpu
+test_dpu: test/ $(TEST_DPU_VERIFIED)
+test_host: test/ $(TEST_HOST_VERIFIED)
+
+test/:
+	mkdir -p test/
+
+# alternative diff command:
+# bash -c "diff <(xxd test/$*.host_output) <(xxd ../test/$*.txt)"
+test/%.host_verified: ../test/%.snappy ../test/%.txt all
+	./decompress -i $< -o test/$*.host_uncompressed 2>&1 | tee test/$*.host_output
+	cmp test/$*.host_uncompressed ../test/$*.txt
+
+test/%.dpu_verified: ../test/%.snappy ../test/%.txt all
+	./decompress -d -i $< -o test/$*.dpu_uncompressed 2>&1 | tee test/$*.dpu_output
+	cmp test/$*.dpu_uncompressed ../test/$*.txt
