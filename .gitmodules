@@ -1,0 +1,3 @@
+[submodule "PIM-common"]
+	path = PIM-common
+	url = git@github.com:UBC-ECE-Sasha/PIM-common.git

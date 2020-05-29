@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = --std=c99 -O3 -g -Wall -Wextra
+CFLAGS = --std=c99 -O3 -g -Wall -Wextra -I../PIM-common/common/include
 DPU_OPTS = `dpu-pkg-config --cflags --libs dpu`
 
 # define DEBUG in the source if we are debugging
