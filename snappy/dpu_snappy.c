@@ -253,6 +253,11 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 {
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;
+
+	/* metrics */
+	uint64_t metrics_tasklets_start[NR_DPUS][NR_TASKLETS] = {0};
+	uint64_t metrics_tasklets_stop[NR_DPUS][NR_TASKLETS] = {0};
+	bool metrics_tasklets_did_work[NR_DPUS][NR_TASKLETS] = {0};
 	
 	// Allocate a DPU
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
@@ -293,6 +298,10 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
+		/* copy metrics just to basically zero the buffers out? */
+		DPU_ASSERT(dpu_copy_to(dpu, "metrics_tasklets_start", 0, metrics_tasklets_start[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_to(dpu, "metrics_tasklets_stop", 0, metrics_tasklets_stop[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_to(dpu, "metrics_tasklets_did_work", 0, metrics_tasklets_did_work[dpu_idx], sizeof(bool) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
 		
 		dpu_idx++;
@@ -316,6 +325,17 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
 		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer + output_offset[dpu_idx][0], output_buffer_start, output_length, 0));
 
+		DPU_ASSERT(dpu_copy_from(dpu, "metrics_tasklets_start", 0, metrics_tasklets_start[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_from(dpu, "metrics_tasklets_stop", 0, metrics_tasklets_stop[dpu_idx], sizeof(uint64_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_from(dpu, "metrics_tasklets_did_work", 0, metrics_tasklets_did_work[dpu_idx], sizeof(bool) * NR_TASKLETS));
+
+		printf("------DPU %d Perf Counter------\n", dpu_idx);
+		for(int tasklet=0; tasklet<NR_TASKLETS; tasklet++){
+			uint64_t start = metrics_tasklets_start[dpu_idx][tasklet];
+			uint64_t stop = metrics_tasklets_stop[dpu_idx][tasklet];
+			bool did_work = metrics_tasklets_did_work[dpu_idx][tasklet];
+			printf("DPU %d Tasklet %d worked: %d start: %ld stop: %ld diff: %ld\n", dpu_idx, tasklet, did_work, start, stop, stop-start);
+		}
 		printf("------DPU %d Logs------\n", dpu_idx);
 		DPU_ASSERT(dpu_log_read(dpu, stdout));
 
@@ -456,7 +476,6 @@ int main(int argc, char **argv)
 	uint32_t input_offset[NR_DPUS][NR_TASKLETS] = {0};
 	uint32_t output_offset[NR_DPUS][NR_TASKLETS] = {0};
 	status = setup_output_descriptor(&input, &output, input_offset, output_offset);
-	
 	if (use_dpu)
 	{
 		status = snappy_uncompress_dpu(&input, &output, input_offset, output_offset);
