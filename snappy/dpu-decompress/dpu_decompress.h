@@ -8,12 +8,6 @@
 #include "../dpu_snappy.h"
 #include <seqread.h> // sequential reader
 
-#ifdef DEBUG
-#define dbg_printf(M, ...) printf("%s: " M , __func__, ##__VA_ARGS__)
-#else
-#define dbg_printf(...)
-#endif
-
 #define OUT_BUFFER_LENGTH 256
 
 typedef struct in_buffer_context
