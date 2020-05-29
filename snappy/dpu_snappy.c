@@ -406,11 +406,11 @@ int main(int argc, char **argv)
 
 	input.buffer = NULL;
 	input.length = 0;
-	input.max = NR_DPUS * (unsigned long)MAX_FILE_LENGTH;
+	input.max = ULONG_MAX;
 
 	output.buffer = NULL;
 	output.length = 0;
-	output.max = NR_DPUS * (unsigned long)MAX_FILE_LENGTH;
+	output.max = ULONG_MAX;
 
 	while ((opt = getopt(argc, argv, options)) != -1)
 	{
@@ -418,6 +418,8 @@ int main(int argc, char **argv)
 		{
 		case 'd':
 			use_dpu = 1;
+			input.max = NR_DPUS * (unsigned long)MAX_FILE_LENGTH;
+			output.max = NR_DPUS * (unsigned long)MAX_FILE_LENGTH;
 			break;
 
 		case 'i':
