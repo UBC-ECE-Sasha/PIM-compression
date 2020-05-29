@@ -3,10 +3,10 @@ The following set of scripts are used to parse program output and produce graphs
 
 * **parse\_output\_file.py** Contains helper functions that open the program output files, read their contents, and parse out the host runtime or the maximum DPU cycles reported.
 * **host\_speedup.py** Creates a horizontal bar graph of speedup (or slowdown) of the DPU application over the host application for a list of test files.
-<img src="https://user-images.githubusercontent.com/25714353/83307868-7066dd80-a1ba-11ea-9adf-bd45f837cfcb.png" alt="host_speedup_graph" width="500"/>
+<img src="https://user-images.githubusercontent.com/25714353/83307868-7066dd80-a1ba-11ea-9adf-bd45f837cfcb.png" alt="host_speedup_graph" width="400"/>
 
 * **dpu\_tasklet\_tradeoff.py** Creates a grouped bar graph of the cycle count reported for different test case combinations of number of DPUs and number of tasklets. The bars are grouped by number of DPUs, and show the differences as different number of tasklets are used on each DPU.
-<img src="https://user-images.githubusercontent.com/25714353/83307875-73fa6480-a1ba-11ea-8f39-397608bf5940.png" alt="dpu_tasklet_tradeoff_graph" width="500"/>
+<img src="https://user-images.githubusercontent.com/25714353/83307875-73fa6480-a1ba-11ea-8f39-397608bf5940.png" alt="dpu_tasklet_tradeoff_graph" width="400"/>
 
 ## Usage
 To use any of these scripts, the program output from running the decompressor must be saved to a specific directory. This can be done by piping the output from the program to a file during testing. The scripts expect the output files to be named a certain way. Additional text may be added to the file name (eg. in the case of multiple trials), but at a minimum the files must be named:
