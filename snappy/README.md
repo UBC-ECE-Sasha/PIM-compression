@@ -14,6 +14,12 @@ The default number of DPUs used is 1 and the default number of DPU tasklets is 1
 
 ## Test
 
+### Run all tests on host and DPU
+```
+make test
+```
+
+### Run specific test:
 ```
 ./decompress [-d] -i <snappy compressed file> [-o <output file>]
 ```
