@@ -13,14 +13,25 @@
 
 const char options[]="di:o:";
 
-static bool read_varint32(struct host_buffer_context *input, uint32_t *len)
+/**
+ * Attempt to read a varint from the input buffer. The format of a varint 
+ * consists of little-endian series of bytes where the lower 7 bits are data
+ * and the upper bit is set if there are more bytes to read. Maximum size 
+ * of the varint is 4 bytes.
+ *
+ * @param input: holds input buffer information
+ * @param val: read value of the varint
+ * @return False if all 4 bytes were read and there is still more data to 
+ *         read, True otherwise
+ */
+static inline bool read_varint32(struct host_buffer_context *input, uint32_t *val)
 {
 	int shift = 0;
-	*len = 0;
+	*val = 0;
 	
 	for (uint8_t count = 0; count < sizeof(uint32_t); count++) {
 		int8_t c = (int8_t)(*input->curr++);
-		*len |= (c & BITMASK(7)) << shift;
+		*val |= (c & BITMASK(7)) << shift;
 		if (!(c & (1 << 7)))
 			return true;
 		shift += 7;
@@ -30,14 +41,145 @@ static bool read_varint32(struct host_buffer_context *input, uint32_t *len)
 }
 
 /**
+ * Read the size of the long literal tag, which is used for literals with
+ * length greater than 60 bytes.
+ *
+ * @param input: holds input buffer information
+ * @param len: length in bytes of the size to read
+ * @return 0 if we reached the end of input buffer, size of literal otherwise
+ */
+static inline uint32_t read_long_literal_size(struct host_buffer_context *input, uint32_t len)
+{
+	if ((input->curr + len) >= (input->buffer + input->length))
+		return 0;
+	
+	uint32_t size = 0;	
+	for (uint32_t i = 0; i < len; i++) {
+		size |= (*input->curr++ << (i << 3));
+	}
+	return size;
+}
+
+/**
+ * Read a 1-byte offset tag and return the offset of the copy that is read.
+ *
+ * @param tag: tag byte to parse
+ * @param input: holds input buffer information
+ * @return 0 if we reached the end of input buffer, offset of the copy otherwise
+ */
+static inline uint16_t make_offset_1_byte(uint8_t tag, struct host_buffer_context *input)
+{
+	if (input->curr >= (input->buffer + input->length)) 
+		return 0;
+	return (uint16_t)(*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
+}
+
+/**
+ * Read a 2-byte offset tag and return the offset of the copy that is read.
+ *
+ * @param tag: tag byte to parse
+ * @param input: holds input buffer information
+ * @return 0 if we reached the end of input buffer, offset of the copy otherwise
+ */
+static inline uint16_t make_offset_2_byte(uint8_t tag, struct host_buffer_context *input)
+{
+	UNUSED(tag);
+
+	uint16_t total = 0;	
+	if ((input->curr + sizeof(uint16_t)) > (input->buffer + input->length)) 
+		return 0;
+	else {
+		total = (*input->curr & 0xFF) | ((*(input->curr + 1) & 0xFF) << 8);
+		input->curr += sizeof(uint16_t);
+		return total;
+	}	 
+}
+
+/**
+ * Read a 4-byte offset tag and return the offset of the copy that is read.
+ *
+ * @param tag: tag byte to parse
+ * @param input: holds input buffer information
+ * @return 0 if we reached the end of input buffer, offset of the copy otherwise
+ */
+static inline uint32_t make_offset_4_byte(uint8_t tag, struct host_buffer_context *input)
+{
+	UNUSED(tag);
+
+	uint32_t total = 0;
+	if ((input->curr + sizeof(uint32_t)) > (input->buffer + input->length)) 
+		return 0;
+	else {
+		total = (*input->curr & 0xFF) |
+				((*(input->curr + 1) & 0xFF) << 8) |
+				((*(input->curr + 2) & 0xFF) << 16) |
+				((*(input->curr + 3) & 0xFF) << 24);
+		input->curr += sizeof(uint32_t);
+		return total;
+	}
+}
+
+/**
+ * Copy and append data from the input bufer to the output buffer.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param len: length of data to copy over
+ */
+static void writer_append_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t len)
+{
+	//printf("Writing %u bytes at 0x%x\n", len, (input->curr - input->buffer));
+	while (len && 
+		(input->curr < (input->buffer + input->length)) &&
+		(output->curr < (output->buffer + output->length)))
+	{
+		*output->curr = *input->curr;
+		input->curr++;
+		output->curr++;
+		len--;
+	}
+}
+
+/**
+ * Copy and append previously uncompressed data to the output buffer.
+ *
+ * @param output: holds output buffer information
+ * @param copy_length: length of data to copy over
+ * @param offset: where to copy from, offset from current output pointer
+ * @return False if offset if invalid, True otherwise
+ */
+static bool write_copy_host(struct host_buffer_context *output, uint32_t copy_length, uint32_t offset)
+{
+	//printf("Copying %u bytes from offset=0x%lx to 0x%lx\n", copy_length, (output->curr - output->buffer) - offset, output->curr - output->buffer);
+	const uint8_t *copy_curr = output->curr;
+	copy_curr -= offset;
+	if (copy_curr < output->buffer)
+	{
+		printf("bad offset!\n");
+		return false;
+	}
+	while (copy_length &&
+		output->curr < (output->buffer + output->length))
+	{
+		*output->curr = *copy_curr;
+		copy_curr++;
+		output->curr++;
+		copy_length -= 1;
+	}
+
+	return true;
+}
+
+/**
  * Traverse the input buffer to find the size of the uncompressed file, uncompressed
  * block size, and break down the input buffer into roughly equal sizes for each DPU
  * tasklet. Allocates the output buffer to match the size of the uncompressed file.
  * 
- * @param input: holds information about input buffer
- * @param output: holds information about output buffer
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
  * @param input_offset: holds starting input offset of each DPU tasklet
  * @param output_offset: holds starting output offset of each DPU tasklet
+ * @return SNAPPY_OK if successful, error code otherwise
  */
 static snappy_status setup_output_descriptor(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_DPUS][NR_TASKLETS], uint32_t output_offset[NR_DPUS][NR_TASKLETS])
 {
@@ -46,13 +188,17 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 
 	// Read the decompressed length
 	uint32_t dlength;
-	if (!read_varint32(input, &dlength))
-		return SNAPPY_BUFFER_TOO_SMALL;
+	if (!read_varint32(input, &dlength)) {
+		fprintf(stderr, "Failed to read decompressed length\n");
+		return SNAPPY_INVALID_INPUT;
+	}
 
 	// Read the decompressed block size
 	uint32_t dblock_size;
-	if (!read_varint32(input, &dblock_size))
-		return SNAPPY_BUFFER_TOO_SMALL;
+	if (!read_varint32(input, &dblock_size)) {
+		fprintf(stderr, "Failed to read decompressed block size\n");
+		return SNAPPY_INVALID_INPUT;
+	}
 
 	uint32_t num_blocks = (dlength + dblock_size - 1) / dblock_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
@@ -87,8 +233,10 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 	}
 	
 	// Check that uncompressed length is within the max we can store
-	if (dlength > output->max)
-		return -SNAPPY_BUFFER_TOO_SMALL;
+	if (dlength > output->max) {
+		fprintf(stderr, "Output length is to big: max=%ld len=%d\n", output->max, dlength);
+		return SNAPPY_BUFFER_TOO_SMALL;
+	}
 	
 	// Allocate output buffer
 	output->buffer = malloc(ALIGN(dlength, 8) | BITMASK(11));
@@ -98,95 +246,13 @@ static snappy_status setup_output_descriptor(struct host_buffer_context *input, 
 	return SNAPPY_OK;
 }
 
-static uint16_t make_offset_1_byte(uint8_t tag, struct host_buffer_context *input)
-{
-	//printf("%s\n", __func__);
-
-	if (input->curr >= (input->buffer + input->length)) 
-		return 0;
-	return (uint16_t)(*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
-}
-
-static uint16_t make_offset_2_byte(uint8_t tag, struct host_buffer_context *input)
-{
-	UNUSED(tag);
-	//printf("%s\n", __func__);
-
-	uint16_t total = 0;	
-	if ((input->curr + sizeof(uint16_t)) > (input->buffer + input->length)) 
-		return 0;
-	else {
-		total = (*input->curr & 0xFF) | ((*(input->curr + 1) & 0xFF) << 8);
-		input->curr += sizeof(uint16_t);
-		return total;
-	}	 
-}
-
-static uint32_t make_offset_4_byte(uint8_t tag, struct host_buffer_context *input)
-{
-	UNUSED(tag);
-	//printf("%s\n", __func__);
-
-	uint32_t total = 0;
-	if ((input->curr + sizeof(uint32_t)) > (input->buffer + input->length)) 
-		return 0;
-	else {
-		total = (*input->curr & 0xFF) |
-				((*(input->curr + 1) & 0xFF) << 8) |
-				((*(input->curr + 2) & 0xFF) << 16) |
-				((*(input->curr + 3) & 0xFF) << 24);
-		input->curr += sizeof(uint32_t);
-		return total;
-	}
-}
-
-static inline bool writer_append_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t len)
-{
-	//printf("Writing %u bytes at 0x%x\n", len, (input->curr - input->buffer));
-	while (len && 
-		(input->curr < (input->buffer + input->length)) &&
-		(output->curr < (output->buffer + output->length)))
-	{
-		*output->curr = *input->curr;
-		input->curr++;
-		output->curr++;
-		len--;
-	}
-	return true;
-}
-
-void write_copy_host(struct host_buffer_context *output, uint32_t copy_length, uint32_t offset)
-{
-	//printf("Copying %u bytes from offset=0x%lx to 0x%lx\n", copy_length, (output->curr - output->buffer) - offset, output->curr - output->buffer);
-	const uint8_t *copy_curr = output->curr;
-	copy_curr -= offset;
-	if (copy_curr < output->buffer)
-	{
-		printf("bad offset!\n");
-		return;
-	}
-	while (copy_length &&
-		output->curr < (output->buffer + output->length))
-	{
-		*output->curr = *copy_curr;
-		copy_curr++;
-		output->curr++;
-		copy_length -= 1;
-	}
-}
-
-uint32_t read_long_literal_size(struct host_buffer_context *input, uint32_t len)
-{
-	if ((input->curr + len) >= (input->buffer + input->length))
-		return 0;
-	
-	uint32_t size = 0;	
-	for (uint32_t i = 0; i < len; i++) {
-		size |= (*input->curr++ << (i << 3));
-	}
-	return size;
-}
-
+/**
+ * Perform the Snappy decompression on the host.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @return SNAPPY_OK if successful, error code otherwise
+ */
 snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
 {
 	while (input->curr < (input->buffer + input->length)) {
@@ -212,8 +278,7 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
 				length = read_long_literal_size(input, length - 60) + 1;
 			}
 
-			if (!writer_append_host(input, output, length))
-				return SNAPPY_OUTPUT_ERROR;
+			writer_append_host(input, output, length);
 			break;
 
 		/* Copies are references back into previous decompressed data, telling
@@ -225,19 +290,22 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
 		case EL_TYPE_COPY_1:
 			length = GET_LENGTH_1_BYTE(tag) + 4;
 			offset = make_offset_1_byte(tag, input);
-			write_copy_host(output, length, offset);
+			if (!write_copy_host(output, length, offset))
+				return SNAPPY_INVALID_INPUT;
 			break;
 
 		case EL_TYPE_COPY_2:
 			length = GET_LENGTH_2_BYTE(tag) + 1;
 			offset = make_offset_2_byte(tag, input);
-			write_copy_host(output, length, offset);
+			if (!write_copy_host(output, length, offset))
+				return SNAPPY_INVALID_INPUT;
 			break;
 
 		case EL_TYPE_COPY_4:
 			length = GET_LENGTH_2_BYTE(tag) + 1;
 			offset = make_offset_4_byte(tag, input);
-			write_copy_host(output, length, offset);
+			if (!write_copy_host(output, length, offset))
+				return SNAPPY_INVALID_INPUT;
 			break;
 		}
 	}
@@ -246,8 +314,13 @@ snappy_status snappy_uncompress_host(struct host_buffer_context *input, struct h
 }
 
 /**
- * Prepare the DPU context by copying the buffer to be decompressed and
- * uploading the program to the DPU.
+ * Prepare the DPU context to run the Snappy decompression on the DPU. 
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param input_offset: holds starting input offset of each DPU tasklet
+ * @param output_offset: holds starting output offset of each DPU tasklet
+ * @return SNAPPY_OK if successful, error code otherwise
  */
 snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_DPUS][NR_TASKLETS], uint32_t output_offset[NR_DPUS][NR_TASKLETS])
 {
@@ -329,10 +402,12 @@ snappy_status snappy_uncompress_dpu(struct host_buffer_context *input, struct ho
 
 /**
  * Read the contents of a file into an in-memory buffer. Upon success,
- * return 0 and write the amount read to input->length.
+ * writes the amount read to input->length.
  *
- * @param in_file The input filename.
- * @param input The struct to which contents of file are written to.
+ * @param in_file: input file name.
+ * @param input: holds input buffer information
+ * @return 1 if file does not exist, is too long, or different number of bytes
+ *         were read than expected, 0 otherwise
  */
 static int read_input_host(char *in_file, struct host_buffer_context *input)
 {
@@ -367,19 +442,22 @@ static int read_input_host(char *in_file, struct host_buffer_context *input)
 /**
  * Write the contents of the output buffer to a file.
  *
- * @param out_file The output filename.
- * @param output Pointer to the buffer containing the contents.
+ * @param out_file: output filename.
+ * @param output: holds output buffer information
  */
-static int write_output_host(char *out_file, struct host_buffer_context* output)
+static void write_output_host(char *out_file, struct host_buffer_context *output)
 {
 	FILE *fout = fopen(out_file, "w");
 	fwrite(output->buffer, 1, output->length, fout);
 	fclose(fout);
-
-	return 0;
 }
 
-static void usage(const char* exe_name)
+/**
+ * Print out application usage.
+ *
+ * @param exe_name: name of the application
+ */
+static void usage(const char *exe_name)
 {
 #ifdef DEBUG
 	fprintf(stderr, "**DEBUG BUILD**\n");
@@ -451,12 +529,13 @@ int main(int argc, char **argv)
 
 	// Read the input file into main memory
 	if (read_input_host(input_file, &input))
-		return 1;
+		return -1;
 
 	uint32_t input_offset[NR_DPUS][NR_TASKLETS] = {0};
 	uint32_t output_offset[NR_DPUS][NR_TASKLETS] = {0};
-	status = setup_output_descriptor(&input, &output, input_offset, output_offset);
-	
+	if (setup_output_descriptor(&input, &output, input_offset, output_offset))
+		return -1;
+
 	if (use_dpu)
 	{
 		status = snappy_uncompress_dpu(&input, &output, input_offset, output_offset);
@@ -474,15 +553,13 @@ int main(int argc, char **argv)
 	if (status == SNAPPY_OK)
 	{
 		// Write the output buffer from main memory to a file
-		if (write_output_host(output_file, &output))
-			return 1;
-
-		printf("uncompressed %u bytes to: %s\n", output.length, output_file);
+		write_output_host(output_file, &output);
+		printf("Uncompressed %u bytes to: %s\n", output.length, output_file);
 	}
 	else
 	{
-		fprintf(stderr, "encountered snappy error %u\n", status);
-		exit(EXIT_FAILURE);
+		fprintf(stderr, "Encountered Snappy error %u\n", status);
+		return -1;
 	}
 
 	return 0;

@@ -21,12 +21,6 @@ int main()
 
 	printf("DPU starting, tasklet %d\n", idx);
 	
-	if (input_length > MAX_FILE_LENGTH)
-	{
-		printf("Input length is too big: max=%i\n", MAX_FILE_LENGTH);
-		return -2;
-	}
-
 	// Check that this tasklet has work to run 
 	if ((idx != 0) && (input_offset[idx] == 0)) {
 		printf("Tasklet %d has nothing to run\n", idx);

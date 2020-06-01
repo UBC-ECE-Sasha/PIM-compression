@@ -11,7 +11,7 @@ The following set of scripts are used to parse program output and produce graphs
 ## Usage
 To use any of these scripts, the program output from running the decompressor must be saved to a specific directory. This can be done by piping the output from the program to a file during testing. The scripts expect the output files to be named a certain way. Additional text may be added to the file name (eg. in the case of multiple trials), but at a minimum the files must be named:
 * **Host Output:** \<testfile\>\_\<host\>.txt
-* **DPU Output:** \<testfile\>\_\<# DPUs\>D\_\<# Tasklets\>T.txt
+* **DPU Output:** \<testfile\>\_\dpus=<# DPUs\>\_\tasklets=<# Tasklets\>.txt
 
 ### host\_speedup.py
 This script takes in one argument: the directory holding the program output files.

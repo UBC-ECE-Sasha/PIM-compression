@@ -15,7 +15,14 @@
 /*******************
  * Memory helpers  *
  *******************/
-static uint8_t READ_BYTE(struct in_buffer_context *_i)
+
+/**
+ * Read the next input byte from the sequential reader.
+ *
+ * @param _i: holds input buffer information
+ * @return Byte that was read
+ */
+static inline uint8_t READ_BYTE(struct in_buffer_context *_i)
 {
 	uint8_t ret = *_i->ptr;
 	_i->ptr = seqread_get(_i->ptr, sizeof(uint8_t), &_i->sr);
@@ -23,14 +30,28 @@ static uint8_t READ_BYTE(struct in_buffer_context *_i)
 	return ret;
 }
 
-static uint16_t make_offset_1_byte(uint8_t tag, struct in_buffer_context *input)
+/**
+ * Read a 1-byte offset tag and return the offset of the copy that is read.
+ *
+ * @param tag: tag byte to parse
+ * @param input: holds input buffer information
+ * @return 0 if we reached the end of input buffer, offset of the copy otherwise
+ */
+static inline uint16_t make_offset_1_byte(uint8_t tag, struct in_buffer_context *input)
 {
 	if (input->curr >= input->length)
 		return 0;
 	return (uint16_t)(READ_BYTE(input)) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
 }
 
-static uint16_t make_offset_2_byte(uint8_t tag, struct in_buffer_context *input)
+/**
+ * Read a 2-byte offset tag and return the offset of the copy that is read.
+ *
+ * @param tag: tag byte to parse
+ * @param input: holds input buffer information
+ * @return 0 if we reached the end of input buffer, offset of the copy otherwise
+ */
+static inline uint16_t make_offset_2_byte(uint8_t tag, struct in_buffer_context *input)
 {
 	UNUSED(tag);
 
@@ -40,8 +61,17 @@ static uint16_t make_offset_2_byte(uint8_t tag, struct in_buffer_context *input)
 	return (READ_BYTE(input) | (READ_BYTE(input) << 8));
 }
 
-static uint32_t make_offset_4_byte(uint8_t tag, struct in_buffer_context *input)
+/**
+ * Read a 4-byte offset tag and return the offset of the copy that is read.
+ *
+ * @param tag: tag byte to parse
+ * @param input: holds input buffer information
+ * @return 0 if we reached the end of input buffer, offset of the copy otherwise
+ */
+static inline uint32_t make_offset_4_byte(uint8_t tag, struct in_buffer_context *input)
 {
+	UNUSED(tag);
+
 	if ((input->curr + sizeof(uint32_t)) > input->length)
 		return 0;
 	
@@ -54,7 +84,16 @@ static uint32_t make_offset_4_byte(uint8_t tag, struct in_buffer_context *input)
 /***************************
  * Reader & writer helpers *
  ***************************/
-uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
+
+/**
+ * Read the size of the long literal tag, which is used for literals with
+ * length greater than 60 bytes.
+ *
+ * @param input: holds input buffer information
+ * @param len: length in bytes of the size to read
+ * @return 0 if we reached the end of input buffer, size of literal otherwise
+ */
+static inline uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
 {
 	if ((input->curr + len) >= input->length)
 		return 0;
@@ -73,9 +112,8 @@ uint32_t read_long_literal_size(struct in_buffer_context *input, uint32_t len)
  * @param input: holds input buffer information
  * @param output: holds output buffer information
  * @param len: length of data to copy over
- * @return True
  */
-static inline bool writer_append_dpu(struct in_buffer_context *input, struct out_buffer_context *output, uint16_t len)
+static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer_context *output, uint16_t len)
 {
 	while (len)
 	{
@@ -100,7 +138,6 @@ static inline bool writer_append_dpu(struct in_buffer_context *input, struct out
 		output->curr++;
 		len--;
 	}
-	return true;
 }
 
 /**
@@ -110,16 +147,16 @@ static inline bool writer_append_dpu(struct in_buffer_context *input, struct out
  *
  * @param output: holds output buffer information
  * @param copy_length: length of data to copy over
- * @param offset: where to copy from, offset from the current output
- *				  pointer
+ * @param offset: where to copy from, offset from the current output pointer
+ * @return False if offset is invalid, True otherwise
  */
-void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uint32_t offset)
+static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uint32_t offset)
 {
 	// We only copy previous data, not future data
 	if (offset > output->curr)
 	{
 		printf("Invalid offset detected: 0x%x\n", offset);
-		return;
+		return false;
 	}
 
 	uint32_t read_index = output->curr - offset;
@@ -186,16 +223,12 @@ void write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uin
 
 	// Update read window for next time this function is called	
 	output->read_window = need_window;
+	return true;
 }
-
-/**************************
- * Snappy decompressor.   *
- **************************/
 
 /*********************
  * Public functions  *
  *********************/
-
 snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_context *output)
 {
 	dbg_printf("curr: %u length: %u\n", input->curr, input->length);
@@ -221,8 +254,7 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 			if (length > 60)
 				length = read_long_literal_size(input, length - 60) + 1;
 
-			if (!writer_append_dpu(input, output, length))
-				return SNAPPY_OUTPUT_ERROR;
+			writer_append_dpu(input, output, length);
 			break;
 
 		// Copies are references back into previous decompressed data, telling
@@ -233,19 +265,22 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 		case EL_TYPE_COPY_1:
 			length = GET_LENGTH_1_BYTE(tag) + 4;
 			offset = make_offset_1_byte(tag, input);
-			write_copy_dpu(output, length, offset);
+			if (!write_copy_dpu(output, length, offset))
+				return SNAPPY_INVALID_INPUT;
 			break;
 
 		case EL_TYPE_COPY_2:
 			length = GET_LENGTH_2_BYTE(tag) + 1;
 			offset = make_offset_2_byte(tag, input);
-			write_copy_dpu(output, length, offset);
+			if (!write_copy_dpu(output, length, offset))
+				return SNAPPY_INVALID_INPUT;
 			break;
 
 		case EL_TYPE_COPY_4:
 			length = GET_LENGTH_2_BYTE(tag) + 1;
 			offset = make_offset_4_byte(tag, input);
-			write_copy_dpu(output, length, offset);
+			if (!write_copy_dpu(output, length, offset))
+				return SNAPPY_INVALID_INPUT;
 			break;
 		}
 	}
