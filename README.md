@@ -11,6 +11,7 @@ There are several test files in the 'test' directory. Each file is in uncompress
 * __plarbn12__ (481,861 bytes) - some poetry
 * __world192__ (1,150,480 bytes) - some text from the CIA World Fact Book
 * __xml__ (5,345,280 bytes) - collected XML files from Silesia Corpus
+* __sao__ (7,251,945 bytes) - the SAO star catalog
 * __dickens__ (10,192,446 bytes) - collected works of Charles Dickens
 * __nci__ (33,553,445 bytes) - chemical database of structures
 * __mozilla__ (51,220,480 bytes) - tarred executables of Mozilla 1.0

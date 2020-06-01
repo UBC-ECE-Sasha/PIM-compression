@@ -24,6 +24,7 @@ files = {'terror2': ('1',   '4'),
 def setup_graph(path: pathlib.Path):
 	"""
 	Parse the output files and create the graph
+
 	:param path: Path holding output files
 	"""
 	# Loop through directory for respective output files and parse them

@@ -13,8 +13,9 @@ num_tasks = ['4', '8', '12', '16', '20', '24']
 def setup_graph(path: pathlib.Path, testfile):
 	"""
 	Parse the output files and create the graph
+	
 	:param path: Path holding output files
-	: param testfile: Test file that graph is being created for
+	:param testfile: Test file that graph is being created for
 	"""
 	idx = 0
 	cycles = []
