@@ -13,13 +13,21 @@ __host uint32_t output_offset[NR_TASKLETS];
 __host __mram_ptr uint8_t *input_buffer;
 __host __mram_ptr uint8_t *output_buffer;
 
+// profiling information
+__host uint64_t metrics_tasklets_start[NR_TASKLETS];
+__host uint64_t metrics_tasklets_stop[NR_TASKLETS];
+__host bool metrics_tasklets_did_work[NR_TASKLETS];
+__host perfcounter_config_t metrics_perfctr_config;
+
 int main()
 {
 	struct in_buffer_context input;
 	struct out_buffer_context output;
+	/* perfcounter_config(COUNT_CYCLES, true); */
+	perfcounter_config(metrics_perfctr_config, true);
 	uint8_t idx = me();
 
-	printf("DPU starting, tasklet %d\n", idx);
+	/* printf("DPU starting, tasklet %d\n", idx); */
 	
 	if (input_length > MAX_FILE_LENGTH)
 	{
@@ -29,7 +37,10 @@ int main()
 
 	// Check that this tasklet has work to run 
 	if ((idx != 0) && (input_offset[idx] == 0)) {
-		printf("Tasklet %d has nothing to run\n", idx);
+		metrics_tasklets_start[idx] = perfcounter_get();
+		metrics_tasklets_did_work[idx] = 0;
+		/* printf("Tasklet %d has nothing to run\n", idx); */
+		metrics_tasklets_stop[idx] = perfcounter_get();
 		return 0;
 	}
 
@@ -72,17 +83,18 @@ int main()
 		output.length = output_length - output_start;
 	} 
 	
-	perfcounter_config(COUNT_CYCLES, true);
 	if (input.length != 0) {
 		// Do the uncompress
-		if (dpu_uncompress(&input, &output))
-		{
+		metrics_tasklets_did_work[idx] = 1;
+		metrics_tasklets_start[idx] = perfcounter_get();
+		snappy_status ret = dpu_uncompress(&input, &output);
+		metrics_tasklets_stop[idx] = perfcounter_get();
+		/* printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get()); */
+		if (ret){
 			printf("Tasklet %d: failed in %ld cycles\n", idx, perfcounter_get());
 			return -1;
 		}
 	}
-
-	printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get());
 	return 0;
 }
 
