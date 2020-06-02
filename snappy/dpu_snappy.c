@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <getopt.h>
-#include <time.h>
+#include <sys/time.h>
 
 #include "dpu_snappy.h"
 
@@ -542,12 +542,16 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		clock_t start, end;
+		struct timeval start;
+		struct timeval end;
 
-		start = clock();
+		gettimeofday(&start, NULL);
 		status = snappy_uncompress_host(&input, &output);
-		end = clock();
-		printf("Host completed in %f seconds\n", ((double)(end - start) / CLOCKS_PER_SEC));
+		gettimeofday(&end, NULL);
+
+		double seconds = end.tv_sec - start.tv_sec;
+		double micros = end.tv_usec - start.tv_usec;
+		printf("Host completed in %f seconds\n", seconds + micros / 100000);
 	}
 
 	if (status == SNAPPY_OK)
