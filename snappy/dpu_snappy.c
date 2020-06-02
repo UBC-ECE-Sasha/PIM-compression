@@ -17,11 +17,11 @@ const char options[]="di:o:";
  * Attempt to read a varint from the input buffer. The format of a varint 
  * consists of little-endian series of bytes where the lower 7 bits are data
  * and the upper bit is set if there are more bytes to read. Maximum size 
- * of the varint is 4 bytes.
+ * of the varint is 5 bytes.
  *
  * @param input: holds input buffer information
  * @param val: read value of the varint
- * @return False if all 4 bytes were read and there is still more data to 
+ * @return False if all 5 bytes were read and there is still more data to 
  *         read, True otherwise
  */
 static inline bool read_varint32(struct host_buffer_context *input, uint32_t *val)
@@ -29,7 +29,7 @@ static inline bool read_varint32(struct host_buffer_context *input, uint32_t *va
 	int shift = 0;
 	*val = 0;
 	
-	for (uint8_t count = 0; count < sizeof(uint32_t); count++) {
+	for (uint8_t count = 0; count < 5; count++) {
 		int8_t c = (int8_t)(*input->curr++);
 		*val |= (c & BITMASK(7)) << shift;
 		if (!(c & (1 << 7)))
