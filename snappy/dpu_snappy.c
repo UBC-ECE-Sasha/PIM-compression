@@ -549,9 +549,9 @@ int main(int argc, char **argv)
 		status = snappy_uncompress_host(&input, &output);
 		gettimeofday(&end, NULL);
 
-		double seconds = end.tv_sec - start.tv_sec;
-		double micros = end.tv_usec - start.tv_usec;
-		printf("Host completed in %f seconds\n", seconds + micros / 100000);
+		double start_time = start.tv_sec + start.tv_usec / 1000000.0;
+		double end_time = end.tv_sec + end.tv_usec / 1000000.0;
+		printf("Host completed in %f seconds\n", end_time - start_time);
 	}
 
 	if (status == SNAPPY_OK)
