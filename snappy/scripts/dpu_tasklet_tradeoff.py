@@ -27,7 +27,7 @@ def setup_graph(path: pathlib.Path, testfile):
 		for dpus in num_dpus:
 			amc =  get_avg_max_cycles(path, testfile, dpus, tasks)
 			if amc is -1:
-				print(f"ERROR: File not found: testfile with {dpus} dpus and {tasks} tasklets.",
+				print(f"ERROR: File not found: {testfile} with {dpus} dpus and {tasks} tasklets.",
 						file=sys.stderr)
 				return
 
