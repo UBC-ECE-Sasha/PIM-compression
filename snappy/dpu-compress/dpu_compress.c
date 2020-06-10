@@ -20,6 +20,12 @@ static inline int32_t log2_floor(uint32_t n)
 	return (n == 0) ? -1 : 31 ^ __builtin_clz(n);
 }
 
+static inline void advance_seqread(struct in_buffer_context *input, uint32_t len)
+{
+	__mram_ptr uint8_t *curr_ptr = seqread_tell(input->ptr, &input->sr);
+	input->ptr = seqread_seek(curr_ptr + len, &input->sr);
+}
+
 /**
  * Read an unsigned integer from input_buffer in MRAM.
  *
@@ -72,7 +78,7 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 		memcpy(&output->append_ptr[curr_index], input->ptr, to_copy);
 
 		// Advance sequential reader
-		input->ptr = seqread_get(input->ptr, to_copy, &input->sr);
+		advance_seqread(input, to_copy);
 		
 		len -= to_copy;
 		curr_index += to_copy;
@@ -353,7 +359,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				const uint32_t base = input->curr;
 				int32_t matched = 4 + find_match_length(candidate + 4, input->curr + 4, input_end);
 				input->curr += matched;
-				input->ptr = seqread_get(input->ptr, matched, &input->sr);
+				advance_seqread(input, matched);
 					
 				int32_t offset = base - candidate;
 				emit_copy(output, offset, matched);
