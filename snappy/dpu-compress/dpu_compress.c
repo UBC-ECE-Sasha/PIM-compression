@@ -1,12 +1,12 @@
-#include <dpu.h>
-#include <dpu_memory.h>
-#include <dpu_log.h>
+#include <string.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <mram.h>
+#include <defs.h>
+#include "alloc.h"
 
-#include "snappy_compress.h"
-
-#define DPU_COMPRESS_PROGRAM "dpu-compress/compress.dpu"
+#include "dpu_compress.h"
 
 /**
  * This value could be halfed or quartered to save memory
@@ -21,41 +21,120 @@ static inline int32_t log2_floor(uint32_t n)
 }
 
 /**
- * Write a varint to the output buffer. See previous function for description of
- * this format.
+ * Read an unsigned integer from input_buffer in MRAM.
+ *
+ * @param offset: offset from start of input_buffer to read from
+ * @return Value read
+ */
+static inline uint32_t read_uint32(uint32_t offset)
+{
+	uint8_t data_read[16];
+	mram_read(input_buf + offset, data_read, 16);
+
+	offset %= 8;
+	
+	return (data_read[offset] |
+			(data_read[offset + 1] << 8) |
+			(data_read[offset + 2] << 16) |
+			(data_read[offset + 3] << 24));
+}
+
+
+static void write_output_buffer(struct out_buffer_context *output, uint8_t *arr, uint32_t len)
+{
+	uint32_t curr_index = output->curr - output->append_window;
+	while (len) {
+		uint32_t to_write = MIN(OUT_BUFFER_LENGTH - curr_index, len);
+		memcpy(&output->append_ptr[curr_index], arr, to_write);
+
+		len -= to_write;
+		curr_index += to_write;
+		output->curr += to_write;
+		arr += to_write;
+
+		// If we are past the append window, write out current window to MRAM and start a new one
+		if (curr_index >= OUT_BUFFER_LENGTH) {
+			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
+
+			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index = 0;
+		}
+	}
+}
+
+
+static void copy_output_buffer(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t len)
+{
+	uint32_t curr_index = output->curr - output->append_window;
+	while (len) {
+		uint32_t to_copy = MIN(OUT_BUFFER_LENGTH - curr_index, len);
+		memcpy(&output->append_ptr[curr_index], input->ptr, to_copy);
+
+		// Advance sequential reader
+		input->ptr = seqread_get(input->ptr, to_copy, &input->sr);
+		
+		len -= to_copy;
+		curr_index += to_copy;
+		output->curr += to_copy;
+
+		// If we are past the append window, write out current window to MRAM and start a new one
+		if (curr_index >= OUT_BUFFER_LENGTH) {
+			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
+
+			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index = 0;
+		}
+	}
+}
+
+
+/**
+ * Write a varint to the output buffer. 
  *
  * @param output: holds output buffer information
  * @param val: value to write
  */
-static inline void write_varint32(struct host_buffer_context *output, uint32_t val)
+static inline void write_varint32(struct out_buffer_context *output, uint32_t val)
 {
 	static const int mask = 128;
+	uint8_t varint[5];
+	uint8_t len = 0;
 
 	if (val < (1 << 7)) {
-		*(output->curr++) = val;
+		varint[0] = val;
+		len = 1;
 	}
 	else if (val < (1 << 14)) {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = val >> 7;
+		varint[0] = val | mask;
+		varint[1] = val >> 7;
+		len = 2;
 	}
 	else if (val < (1 << 21)) {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = (val >> 7) | mask;
-		*(output->curr++) = val >> 14;
+		varint[0] = val | mask;
+		varint[1] = (val >> 7) | mask;
+		varint[2] = val >> 14;
+		len = 3;
 	}
 	else if (val < (1 << 28)) {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = (val >> 7) | mask;
-		*(output->curr++) = (val >> 14) | mask;
-		*(output->curr++) = val >> 21;
+		varint[0] = val | mask;
+		varint[1] = (val >> 7) | mask;
+		varint[2] = (val >> 14) | mask;
+		varint[3] = val >> 21;
+		len = 4;
 	}
 	else {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = (val >> 7) | mask;
-		*(output->curr++) = (val >> 14) | mask;
-		*(output->curr++) = (val >> 21) | mask;
-		*(output->curr++) = val >> 28;
+		varint[0] = val | mask;
+		varint[1] = (val >> 7) | mask;
+		varint[2] = (val >> 14) | mask;
+		varint[3] = (val >> 21) | mask;
+		varint[4] = val >> 28;
+		len = 5;
 	}
+
+	// Write out the varint to the output buffer
+	write_output_buffer(output, varint, len);
 }
 
 /**
@@ -66,27 +145,10 @@ static inline void write_varint32(struct host_buffer_context *output, uint32_t v
  */
 static inline void write_uint32(uint8_t *ptr, uint32_t val)
 {
-	*(ptr++) = val & 0xFF;
-	*(ptr++) = (val >> 8) & 0xFF;
-	*(ptr++) = (val >> 16) & 0xFF;
-	*(ptr++) = (val >> 24) & 0xFF;
-}
-
-/**
- * Read an unsigned integer to the output buffer. 
- *
- * @param ptr: where to read the integer from
- * @return Value read
- */
-static inline uint32_t read_uint32(uint8_t *ptr)
-{
-	uint32_t val = 0;
-	
-	val |= *ptr++ & 0xFF;
-	val |= (*ptr++ & 0xFF) << 8;
-	val |= (*ptr++ & 0xFF) << 16;
-	val |= (*ptr++ & 0xFF) << 24;
-	return val;
+	*ptr++ = val & 0xFF;
+	*ptr++ = (val >> 8) & 0xFF;
+	*ptr++ = (val >> 16) & 0xFF;
+	*ptr++ = (val >> 24) & 0xFF;
 }
 
 static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, uint32_t *table_size)
@@ -105,14 +167,14 @@ static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, ui
  * input. Of course, it doesn't hurt if the hash function is reasonably fast
  * either, as it gets called a lot.
  */
-static inline uint32_t hash(uint8_t *ptr, int shift)
+static inline uint32_t hash(uint32_t ptr, int shift)
 {
 	uint32_t kmul = 0x1e35a7bd;
 	uint32_t bytes = read_uint32(ptr);
 	return (bytes * kmul) >> shift;
 }
 
-static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_limit)
+static inline int32_t find_match_length(uint32_t s1, uint32_t s2, uint32_t s2_limit)
 {
 	int32_t matched = 0;
 	
@@ -123,55 +185,65 @@ static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_li
 	}
 
 	// Remaining bytes
-	while ((s2 < s2_limit) && (s1[matched] == *s2)) {
-		s2++;
-		matched++;
+	if (s2 <= (s2_limit - 4)) {
+		uint32_t x = read_uint32(s1 + matched) ^ read_uint32(s2);
+		matched += (__builtin_ctz(x) >> 3);
 	}
+
 	return matched;
 }
 
-static void emit_literal(struct host_buffer_context *output, uint8_t *literal, uint32_t len)
+static void emit_literal(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t len)
 {
-	//printf("emit_literal %d %d\n", len, output->curr-output->buffer);
+	//printf("emit_literal %d %d\n", len, output->curr);
+	uint8_t tag[5];
+	uint8_t tag_len = 0;
+
 	uint32_t n = len - 1; // Zero-length literals are disallowed
-	
 	if (n < 60) {
-		*output->curr++ = EL_TYPE_LITERAL | (n << 2);
+		tag[0] = EL_TYPE_LITERAL | (n << 2);
+		tag_len = 1;
 	}
 	else {
-		uint8_t *base = output->curr;
-		uint8_t count = 0;
-		output->curr++;
+		uint8_t count = 1;
 		while (n > 0) {
-			*output->curr++ = n & 0xFF;
+			tag[count] = n & 0xFF;
 			n >>= 8;
 			count++;
 		}
 
-		*base = EL_TYPE_LITERAL | ((59 + count) << 2);
+		tag[0] = EL_TYPE_LITERAL | ((58 + count) << 2);
+		tag_len = count;
 	}
-	
-	memcpy(output->curr, literal, len);
-	output->curr += len;
+
+	write_output_buffer(output, tag, tag_len);
+	copy_output_buffer(input, output, len);
 }
 
-static void emit_copy_less_than64(struct host_buffer_context *output, uint32_t offset, uint32_t len)
+static void emit_copy_less_than64(struct out_buffer_context *output, uint32_t offset, uint32_t len)
 {
+	uint8_t tag[3];
+	uint8_t tag_len = 0;
+
 	if ((len < 12) && (offset < 2048)) {
-		*output->curr++ = EL_TYPE_COPY_1 + ((len - 4) << 2) + ((offset >> 8) << 5);
-		*output->curr++ = offset & 0xFF;
+		tag[0] = EL_TYPE_COPY_1 + ((len - 4) << 2) + ((offset >> 8) << 5);
+		tag[1] = offset & 0xFF;
+		tag_len = 2;
 	}
 	else {
-		*output->curr++ = EL_TYPE_COPY_2 + ((len - 1) << 2);
-		*output->curr++ = offset & 0xFF;
-		*output->curr++ = (offset >> 8) & 0xFF;
+		tag[0] = EL_TYPE_COPY_2 + ((len - 1) << 2);
+		tag[1] = offset & 0xFF;
+		tag[2] = (offset >> 8) & 0xFF;
+		tag_len = 3;
 	}
+
+	write_output_buffer(output, tag, tag_len);
 }
 
-static void emit_copy(struct host_buffer_context *output, uint32_t offset, uint32_t len) 
+static void emit_copy(struct out_buffer_context *output, uint32_t offset, uint32_t len) 
 {
-	//printf("emit_copy %d %d %d\n", offset, len, output->curr - output->buffer);
-	
+	//printf("emit_copy %d %d %d\n", offset, len, output->curr);
+
 	// Emit 64-byte copies but keep at least four bytes reserved
 	while (len >= 68) {
 		emit_copy_less_than64(output, offset, 64);
@@ -188,22 +260,22 @@ static void emit_copy(struct host_buffer_context *output, uint32_t offset, uint3
 	emit_copy_less_than64(output, offset, len);
 }
 
-static uint32_t compress_block(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
+static uint32_t compress_block(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
-	uint8_t *output_start = output->curr;
-	uint8_t *base_input = input->curr;
-	uint8_t *input_end = input->curr + input_size;
+	uint32_t output_start = output->curr;
+	uint32_t base_input = input->curr;
+	uint32_t input_end = input->curr + input_size;
 	const int32_t shift = 32 - log2_floor(table_size);
 
 	/*
 	 * Bytes in [next_emit, input->curr) will be emitted as literal bytes.
 	 * Or [next_emit, input_end) after the main loop.
 	 */
-	uint8_t *next_emit = input->curr;
+	uint32_t next_emit = input->curr;
 	const uint32_t input_margin_bytes = 15;
 
 	if (input_size >= input_margin_bytes) {
-		const uint8_t *const input_limit = input->curr + input_size - input_margin_bytes;
+		const uint32_t input_limit = input->curr + input_size - input_margin_bytes;
 		
 		uint32_t next_hash;
 		for (next_hash = hash(++input->curr, shift);;) {
@@ -235,16 +307,19 @@ static uint32_t compress_block(struct host_buffer_context *input, struct host_bu
 			 * number of bytes to move ahead for each iteration.
 			 */
 			uint32_t skip_bytes = 32;
-			uint8_t *next_input = input->curr;
-			uint8_t *candidate;
+			uint32_t next_input = input->curr;
+			uint32_t candidate;
 			do {
 				input->curr = next_input;
 				uint32_t hval = next_hash;
 				uint32_t bytes_between_hash_lookups = skip_bytes++ >> 5;
 				next_input = input->curr + bytes_between_hash_lookups;
 
-				if (next_input > input_limit)
-					goto emit_remainder;
+				if (next_input > input_limit) {
+					emit_literal(input, output, input_end - next_emit);
+					input->curr = input_end;
+					return (output->curr - output_start);
+				}		
 
 				next_hash = hash(next_input, shift);
 				candidate = base_input + table[hval];
@@ -256,7 +331,7 @@ static uint32_t compress_block(struct host_buffer_context *input, struct host_bu
 			 * than 4 bytes match.	But, prior to the match, input bytes
 			 * [next_emit, input->curr) are unmatched.	Emit them as "literal bytes."
 			 */
-			emit_literal(output, next_emit, input->curr - next_emit);
+			emit_literal(input, output, input->curr - next_emit);
 
 			/*
 			 * Step 3: Call EmitCopy, and then see if another EmitCopy could
@@ -268,18 +343,18 @@ static uint32_t compress_block(struct host_buffer_context *input, struct host_bu
 			 * by proceeding to the next iteration of the main loop.  We also can exit
 			 * this loop via goto if we get close to exhausting the input.
 			 */
-			uint8_t *insert_tail;
-			uint32_t candidate_bytes = 0;
+			uint32_t insert_tail;
 
 			do {
 				/*
 				 * We have a 4-byte match at input->curr, and no need to emit any
 				 *	"literal bytes" prior to input->curr.
 				 */
-				const uint8_t *base = input->curr;
+				const uint32_t base = input->curr;
 				int32_t matched = 4 + find_match_length(candidate + 4, input->curr + 4, input_end);
 				input->curr += matched;
-
+				input->ptr = seqread_get(input->ptr, matched, &input->sr);
+					
 				int32_t offset = base - candidate;
 				emit_copy(output, offset, matched);
 			
@@ -289,67 +364,33 @@ static uint32_t compress_block(struct host_buffer_context *input, struct host_bu
 				 */
 				insert_tail = input->curr - 1;
 				next_emit = input->curr;
-				if (input->curr >= input_limit)
-					goto emit_remainder;
+				if (input->curr >= input_limit) {
+					emit_literal(input, output, input_end - next_emit);
+					input->curr = input_end;
+					return (output->curr - output_start);
+				}
 
 				uint32_t prev_hash = hash(insert_tail, shift);
 				table[prev_hash] = input->curr - base_input - 1;
 
 				uint32_t curr_hash = hash(insert_tail + 1, shift);
 				candidate = base_input + table[curr_hash];
-				candidate_bytes = read_uint32(candidate);
 				table[curr_hash] = input->curr - base_input;
-			} while(read_uint32(insert_tail + 1) == candidate_bytes);
+			} while(read_uint32(insert_tail + 1) == read_uint32(candidate));
 
 			next_hash = hash(insert_tail + 2, shift);
 			input->curr++;
 		}
 	}
-				
-emit_remainder:
-	/* Emit the remaining bytes as literal */
-	if (next_emit < input_end) {
-		emit_literal(output, next_emit, input_end - next_emit);
-		input->curr = input_end;
-	}
 
-	return (output->curr - output_start);
+	// We should never reach this point
+	return 0;
 }
 
-void setup_compression(struct host_buffer_context *input, struct host_buffer_context *output) 
+snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t block_size)
 {
-	/*
-	 * Compressed data can be defined as:
-	 *	  compressed := item* literal*
-	 *	  item		 := literal* copy
-	 *
-	 * The trailing literal sequence has a space blowup of at most 62/60
-	 * since a literal of length 60 needs one tag byte + one extra byte
-	 * for length information.
-	 *
-	 * Item blowup is trickier to measure.	Suppose the "copy" op copies
-	 * 4 bytes of data.  Because of a special check in the encoding code,
-	 * we produce a 4-byte copy only if the offset is < 65536.	Therefore
-	 * the copy op takes 3 bytes to encode, and this type of item leads
-	 * to at most the 62/60 blowup for representing literals.
-	 *
-	 * Suppose the "copy" op copies 5 bytes of data.  If the offset is big
-	 * enough, it will take 5 bytes to encode the copy op.	Therefore the
-	 * worst case here is a one-byte literal followed by a five-byte copy.
-	 * I.e., 6 bytes of input turn into 7 bytes of "compressed" data.
-	 *
-	 * This last factor dominates the blowup, so the final estimate is:
-	 */
-	uint32_t max_compressed_length = 32 + input->length + input->length / 6;
-	output->buffer = malloc(sizeof(uint8_t) * max_compressed_length);
-	output->curr = output->buffer;
-	output->length = 0;
-}
-
-snappy_status snappy_compress_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size)
-{
-	// Allocate the hash table for compression
-	uint16_t *table = malloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
+	// Allocate the hash table for compression, TODO: do something about this size
+	uint16_t *table = (uint16_t *)mem_alloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
 
 	// Write the decompressed length
 	uint32_t length_remain = input->length;
@@ -359,11 +400,12 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 	write_varint32(output, block_size);
 
 	// Make space for the compressed lengths array
-	uint8_t *compr_lengths = output->curr;
-	uint32_t num_blocks = (input->length + block_size - 1) / block_size;
-	output->curr += num_blocks * sizeof(uint32_t);
+	uint32_t len_compr_lengths = sizeof(uint32_t) * ((input->length + block_size - 1) / block_size);
+	uint32_t idx_compr_lengths = output->curr;
+	uint8_t *compr_lengths = (uint8_t *)mem_alloc(len_compr_lengths);
+	output->curr += len_compr_lengths;
 
-	while (input->curr < (input->buffer + input->length)) {
+	while (input->curr < input->length) {
 		// Get the next block size ot compress
 		uint32_t to_compress = MIN(length_remain, block_size);
 
@@ -380,52 +422,24 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
  
 		length_remain -= to_compress;
 	}
-
+	
 	// Update output length
-	output->length = (output->curr - output->buffer);
+	output->length = output->curr;
 
-	return SNAPPY_OK;
-}
+	// Write out last buffer to MRAM
+	if (output->append_window < output->length) {
+		uint32_t len_final = ALIGN(output->length % OUT_BUFFER_LENGTH, 8);
+		if (len_final == 0)
+			len_final = OUT_BUFFER_LENGTH;
 
-snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size)
-{
-	struct dpu_set_t dpus;
-	struct dpu_set_t dpu;
-
-	// Allocate DPUs
-	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
-
-	uint32_t input_buffer_start = 1024 * 1024;
-	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
-	DPU_FOREACH(dpus, dpu) {
-		// Set up and load the DPU program
-     	DPU_ASSERT(dpu_load(dpu, DPU_COMPRESS_PROGRAM, NULL));
-		DPU_ASSERT(dpu_copy_to(dpu, "block_size", 0, &block_size, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr, ALIGN(input->length, 8), 0));
+		dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, len_final);
+		mram_write(output->append_ptr, &output->buffer[output->append_window], len_final);
 	}
 
- 	// Launch all DPUs
-    int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
-    if (ret != 0)
-    {
-        DPU_ASSERT(dpu_free(dpus));
-        return SNAPPY_INVALID_INPUT;
-    }
+	// Write the compressed lengths buffer to MRAM
+	mram_read(&output->buffer[0], output->append_ptr, OUT_BUFFER_LENGTH);
+	memcpy(&output->append_ptr[idx_compr_lengths], compr_lengths - len_compr_lengths, len_compr_lengths);
+	mram_write(output->append_ptr, &output->buffer[0], OUT_BUFFER_LENGTH);
 
-    // Deallocate the DPUs
-    DPU_FOREACH(dpus, dpu) {
-        // Get the results back from the DPU
-        DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output->length, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer, output_buffer_start, ALIGN(output->length, 8), 0));
-
-        printf("------DPU 0 Logs------\n");
-        DPU_ASSERT(dpu_log_read(dpu, stdout));
-    }
-
-    DPU_ASSERT(dpu_free(dpus));
-
-    return SNAPPY_OK;
+	return SNAPPY_OK;
 }

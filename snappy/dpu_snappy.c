@@ -161,7 +161,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = SNAPPY_INVALID_INPUT;
+			status = snappy_compress_dpu(&input, &output, block_size);
 		}
 		else
 		{

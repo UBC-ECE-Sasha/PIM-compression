@@ -23,4 +23,8 @@ void setup_compression(struct host_buffer_context *input, struct host_buffer_con
  */
 snappy_status snappy_compress_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size);
 
+
+snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size);
+
+
 #endif /* _SNAPPY_COMPRESSION_H_ */

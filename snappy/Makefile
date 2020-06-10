@@ -22,9 +22,11 @@ all: dpu host
 clean:
 	$(RM) dpu_snappy
 	$(MAKE) -C dpu-decompress $@
+	$(MAKE) -C dpu-compress $@
 
 dpu:
 	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-decompress
+	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-compress
 
 host: dpu_snappy
 	
