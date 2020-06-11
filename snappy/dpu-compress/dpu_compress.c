@@ -95,54 +95,6 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 	}
 }
 
-
-/**
- * Write a varint to the output buffer. 
- *
- * @param output: holds output buffer information
- * @param val: value to write
- */
-static inline void write_varint32(struct out_buffer_context *output, uint32_t val)
-{
-	static const int mask = 128;
-	uint8_t varint[5];
-	uint8_t len = 0;
-
-	if (val < (1 << 7)) {
-		varint[0] = val;
-		len = 1;
-	}
-	else if (val < (1 << 14)) {
-		varint[0] = val | mask;
-		varint[1] = val >> 7;
-		len = 2;
-	}
-	else if (val < (1 << 21)) {
-		varint[0] = val | mask;
-		varint[1] = (val >> 7) | mask;
-		varint[2] = val >> 14;
-		len = 3;
-	}
-	else if (val < (1 << 28)) {
-		varint[0] = val | mask;
-		varint[1] = (val >> 7) | mask;
-		varint[2] = (val >> 14) | mask;
-		varint[3] = val >> 21;
-		len = 4;
-	}
-	else {
-		varint[0] = val | mask;
-		varint[1] = (val >> 7) | mask;
-		varint[2] = (val >> 14) | mask;
-		varint[3] = (val >> 21) | mask;
-		varint[4] = val >> 28;
-		len = 5;
-	}
-
-	// Write out the varint to the output buffer
-	write_output_buffer(output, varint, len);
-}
-
 /**
  * Write an unsigned integer to the output buffer. 
  *
@@ -398,19 +350,13 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 	// Allocate the hash table for compression, TODO: do something about this size
 	uint16_t *table = (uint16_t *)mem_alloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
 
-	// Write the decompressed length
-	uint32_t length_remain = input->length;
-	write_varint32(output, length_remain);
-
-	// Write the decompressed block size
-	write_varint32(output, block_size);
-
 	// Make space for the compressed lengths array
 	uint32_t len_compr_lengths = sizeof(uint32_t) * ((input->length + block_size - 1) / block_size);
 	uint32_t idx_compr_lengths = output->curr;
 	uint8_t *compr_lengths = (uint8_t *)mem_alloc(len_compr_lengths);
 	output->curr += len_compr_lengths;
-
+	
+	uint32_t length_remain = input->length;
 	while (input->curr < input->length) {
 		// Get the next block size ot compress
 		uint32_t to_compress = MIN(length_remain, block_size);

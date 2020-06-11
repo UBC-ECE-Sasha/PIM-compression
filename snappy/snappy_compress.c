@@ -392,6 +392,11 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;
 
+	// Write the decompressed block size and length
+	write_varint32(output, input->length);
+	write_varint32(output, block_size);
+	output->length = output->curr - output->buffer;
+
 	// Allocate DPUs
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 
@@ -418,8 +423,11 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
     // Deallocate the DPUs
     DPU_FOREACH(dpus, dpu) {
         // Get the results back from the DPU
-        DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output->length, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer, output_buffer_start, ALIGN(output->length, 8), 0));
+		uint32_t output_length;
+        DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+        DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr, output_buffer_start, ALIGN(output_length, 8), 0));
+
+		output->length += output_length;
 
         printf("------DPU 0 Logs------\n");
         DPU_ASSERT(dpu_log_read(dpu, stdout));
