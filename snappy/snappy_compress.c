@@ -400,14 +400,18 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	// Allocate DPUs
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 
+	uint32_t header_length = ((input->length + block_size - 1) / block_size) * sizeof(uint32_t);
+
 	uint32_t input_buffer_start = 1024 * 1024;
-	uint32_t output_buffer_start = ALIGN(input_buffer_start + input->length + 64, 64);
+	uint32_t header_buffer_start = ALIGN(input_buffer_start + input->length, 64);
+	uint32_t output_buffer_start = ALIGN(header_buffer_start + header_length + 8, 64);
 	DPU_FOREACH(dpus, dpu) {
 		// Set up and load the DPU program
      	DPU_ASSERT(dpu_load(dpu, DPU_COMPRESS_PROGRAM, NULL));
 		DPU_ASSERT(dpu_copy_to(dpu, "block_size", 0, &block_size, sizeof(uint32_t)));
         DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input->length, sizeof(uint32_t)));
         DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to(dpu, "header_buffer", 0, &header_buffer_start, sizeof(uint32_t)));
         DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
         DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr, ALIGN(input->length, 8), 0));
 	}
@@ -425,9 +429,11 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
         // Get the results back from the DPU
 		uint32_t output_length;
         DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr, output_buffer_start, ALIGN(output_length, 8), 0));
 
-		output->length += output_length;
+		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr, header_buffer_start, ALIGN(header_length, 8), 0));
+        DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr + header_length, output_buffer_start, ALIGN(output_length, 8), 0));
+		
+		output->length += header_length + output_length;
 
         printf("------DPU 0 Logs------\n");
         DPU_ASSERT(dpu_log_read(dpu, stdout));

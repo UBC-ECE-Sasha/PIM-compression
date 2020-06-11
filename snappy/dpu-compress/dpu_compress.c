@@ -95,20 +95,6 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 	}
 }
 
-/**
- * Write an unsigned integer to the output buffer. 
- *
- * @param ptr: where to write the integer
- * @param val: value to write
- */
-static inline void write_uint32(uint8_t *ptr, uint32_t val)
-{
-	*ptr++ = val & 0xFF;
-	*ptr++ = (val >> 8) & 0xFF;
-	*ptr++ = (val >> 16) & 0xFF;
-	*ptr++ = (val >> 24) & 0xFF;
-}
-
 static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, uint32_t *table_size)
 {
 	*table_size = 256;
@@ -345,20 +331,16 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 	return 0;
 }
 
-snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t block_size)
+snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, __mram_ptr uint32_t *header_buffer, uint32_t block_size)
 {
 	// Allocate the hash table for compression, TODO: do something about this size
 	uint16_t *table = (uint16_t *)mem_alloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
 
-	// Make space for the compressed lengths array
-	uint32_t len_compr_lengths = sizeof(uint32_t) * ((input->length + block_size - 1) / block_size);
-	uint32_t idx_compr_lengths = output->curr;
-	uint8_t *compr_lengths = (uint8_t *)mem_alloc(len_compr_lengths);
-	output->curr += len_compr_lengths;
-	
+	bool idx = 0;
+	uint32_t compr_length[2];
 	uint32_t length_remain = input->length;
 	while (input->curr < input->length) {
-		// Get the next block size ot compress
+		// Get the next block size to compress
 		uint32_t to_compress = MIN(length_remain, block_size);
 
 		// Get the size of the hash table used for this block
@@ -369,16 +351,21 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 		uint32_t compressed_len = compress_block(input, output, to_compress, table, table_size);
 		
 		// Write out the compressed length of this block
-		write_uint32(compr_lengths, compressed_len);
-		compr_lengths += sizeof(uint32_t);
- 
+		compr_length[idx] = compressed_len;
+		if (idx) {
+			mram_write(compr_length, header_buffer, 8);
+			header_buffer += 2;
+		}
+		
+		idx = !idx; 
 		length_remain -= to_compress;
 	}
-	
-	// Update output length
-	output->length = output->curr;
+
+	// Write out the last compressed length
+	mram_write(compr_length, header_buffer, 8);
 
 	// Write out last buffer to MRAM
+	output->length = output->curr;
 	if (output->append_window < output->length) {
 		uint32_t len_final = ALIGN(output->length % OUT_BUFFER_LENGTH, 8);
 		if (len_final == 0)
@@ -387,11 +374,6 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 		dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, len_final);
 		mram_write(output->append_ptr, &output->buffer[output->append_window], len_final);
 	}
-
-	// Write the compressed lengths buffer to MRAM
-	mram_read(&output->buffer[0], output->append_ptr, OUT_BUFFER_LENGTH);
-	memcpy(&output->append_ptr[idx_compr_lengths], compr_lengths - len_compr_lengths, len_compr_lengths);
-	mram_write(output->append_ptr, &output->buffer[0], OUT_BUFFER_LENGTH);
 
 	return SNAPPY_OK;
 }

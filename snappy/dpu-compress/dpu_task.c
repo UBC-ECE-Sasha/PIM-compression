@@ -10,6 +10,7 @@ __host uint32_t block_size;
 __host uint32_t input_length;
 __host uint32_t output_length;
 __host __mram_ptr uint8_t *input_buffer;
+__host __mram_ptr uint32_t *header_buffer;
 __host __mram_ptr uint8_t *output_buffer;
 
 __mram_ptr uint8_t *input_buf;
@@ -37,7 +38,7 @@ int main()
 	perfcounter_config(COUNT_CYCLES, true);
 	if (input.length != 0) {
 		// Do the uncompress
-		if (dpu_compress(&input, &output, block_size))
+		if (dpu_compress(&input, &output, header_buffer, block_size))
 		{
 			printf("Tasklet %d: failed in %ld cycles\n", idx, perfcounter_get());
 			return -1;
