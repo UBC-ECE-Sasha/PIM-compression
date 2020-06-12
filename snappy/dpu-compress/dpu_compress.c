@@ -15,11 +15,23 @@
 #define MAX_HASH_TABLE_BITS 14
 #define MAX_HASH_TABLE_SIZE (1U << MAX_HASH_TABLE_BITS)
 
+/**
+ * Calculate the rounded down log base 2 of an unsigned integer.
+ *
+ * @param n: value to perform the calculation on
+ * @return Log base 2 floor of n
+ */
 static inline int32_t log2_floor(uint32_t n)
 {
 	return (n == 0) ? -1 : 31 ^ __builtin_clz(n);
 }
 
+/**
+ * Advance the sequential reader by some amount.
+ *
+ * @param input: holds input buffer information
+ * @param len: number of bytes to advance seqential reader by
+ */
 static inline void advance_seqread(struct in_buffer_context *input, uint32_t len)
 {
 	__mram_ptr uint8_t *curr_ptr = seqread_tell(input->ptr, &input->sr);
@@ -35,17 +47,23 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
 static inline uint32_t read_uint32(uint32_t offset)
 {
 	uint8_t data_read[16];
-	mram_read(input_buf + offset, data_read, 16);
+	mram_read(&input_buf[WINDOW_ALIGN(offset, 8)], data_read, 16);
 
 	offset %= 8;
-	
 	return (data_read[offset] |
 			(data_read[offset + 1] << 8) |
 			(data_read[offset + 2] << 16) |
-			(data_read[offset + 3] << 24));
+			(data_read[offset + 3] << 24)); 
 }
 
-
+/**
+ * Write data to the output buffer. If append buffer becomes full, it is written
+ * to MRAM and a new buffer is started.
+ *
+ * @param output: holds output buffer information
+ * @param arr: buffer holding data to write
+ * @param len: length of data to write
+ */
 static void write_output_buffer(struct out_buffer_context *output, uint8_t *arr, uint32_t len)
 {
 	uint32_t curr_index = output->curr - output->append_window;
@@ -69,7 +87,14 @@ static void write_output_buffer(struct out_buffer_context *output, uint8_t *arr,
 	}
 }
 
-
+/**
+ * Copy data from the current location in the input buffer to the output buffer. 
+ * Manages the append window in the same way as the previous function.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param len: length of data to copy
+ */
 static void copy_output_buffer(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t len)
 {
 	uint32_t curr_index = output->curr - output->append_window;
@@ -95,6 +120,14 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 	}
 }
 
+/**
+ * Get the size of the hash table needed for the size we are
+ * compressing, and reset the values in the table.
+ *
+ * @param table: pointer to the start of the hash table
+ * @param size_to_compress: size we are compressing
+ * @param table_size[out]: size of the table needed to compress size_to_compress
+ */
 static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, uint32_t *table_size)
 {
 	*table_size = 256;
@@ -105,11 +138,17 @@ static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, ui
 }
 
 /**
+ * Hash function.
+ *
  * Any hash function will produce a valid compressed bitstream, but a good
  * hash function reduces the number of collisions and thus yields better
  * compression for compressible input, and more speed for incompressible
  * input. Of course, it doesn't hurt if the hash function is reasonably fast
  * either, as it gets called a lot.
+ *
+ * @param ptr: pointer to the value we want to hash
+ * @param shift: adjusts hash to be within table size
+ * @return Hash of four bytes stored at ptr
  */
 static inline uint32_t hash(uint32_t ptr, int shift)
 {
@@ -118,6 +157,14 @@ static inline uint32_t hash(uint32_t ptr, int shift)
 	return (bytes * kmul) >> shift;
 }
 
+/**
+ * Find the number of bytes in common between s1 and s2.
+ *
+ * @param s1: offset of first buffer from input buffer start
+ * @param s2: offset of second buffer from input buffer start
+ * @param s2_limit: offset of end of second bufer from input buffer start
+ * @return Number of bytes in common between s1 and s2
+ */
 static inline int32_t find_match_length(uint32_t s1, uint32_t s2, uint32_t s2_limit)
 {
 	int32_t matched = 0;
@@ -129,14 +176,19 @@ static inline int32_t find_match_length(uint32_t s1, uint32_t s2, uint32_t s2_li
 	}
 
 	// Remaining bytes
-	if (s2 <= (s2_limit - 4)) {
-		uint32_t x = read_uint32(s1 + matched) ^ read_uint32(s2);
-		matched += (__builtin_ctz(x) >> 3);
-	}
+	uint32_t x = read_uint32(s1 + matched) ^ read_uint32(s2);
+	matched += MIN((__builtin_ctz(x) >> 3), s2_limit - s2);
 
 	return matched;
 }
 
+/**
+ * Emit a literal element from the current location in the input buffer.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param len: length of the literal
+ */
 static void emit_literal(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t len)
 {
 	//printf("emit_literal %d %d\n", len, output->curr);
@@ -164,6 +216,13 @@ static void emit_literal(struct in_buffer_context *input, struct out_buffer_cont
 	copy_output_buffer(input, output, len);
 }
 
+/**
+ * Emit a copy element that is less than 64-bytes in length.
+ *
+ * @param output: holds output buffer information
+ * @param offset: offset of the copy
+ * @param len: length of the copy
+ */
 static void emit_copy_less_than64(struct out_buffer_context *output, uint32_t offset, uint32_t len)
 {
 	uint8_t tag[3];
@@ -184,6 +243,13 @@ static void emit_copy_less_than64(struct out_buffer_context *output, uint32_t of
 	write_output_buffer(output, tag, tag_len);
 }
 
+/**
+ * Emit copy elements in chunks of length 64-bytes.
+ *
+ * @param output: holds output buffer information
+ * @param offset: offset of the copy
+ * @param len: length of the copy
+ */
 static void emit_copy(struct out_buffer_context *output, uint32_t offset, uint32_t len) 
 {
 	//printf("emit_copy %d %d %d\n", offset, len, output->curr);
@@ -204,6 +270,17 @@ static void emit_copy(struct out_buffer_context *output, uint32_t offset, uint32
 	emit_copy_less_than64(output, offset, len);
 }
 
+/**
+ * Perform Snappy compression on a block of input data, and save the compressed
+ * data to the output buffer.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param input_size: size of the input to compress
+ * @param table: pointer to allocated hash table
+ * @param table_size: size of the hash table
+ * @return Resulting compressed size
+ */
 static uint32_t compress_block(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
 	uint32_t output_start = output->curr;
@@ -260,7 +337,9 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				next_input = input->curr + bytes_between_hash_lookups;
 
 				if (next_input > input_limit) {
-					emit_literal(input, output, input_end - next_emit);
+					if (next_emit < input_end)
+						emit_literal(input, output, input_end - next_emit);
+					
 					input->curr = input_end;
 					return (output->curr - output_start);
 				}		
@@ -309,7 +388,9 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				insert_tail = input->curr - 1;
 				next_emit = input->curr;
 				if (input->curr >= input_limit) {
-					emit_literal(input, output, input_end - next_emit);
+					if (next_emit < input_end)
+						emit_literal(input, output, input_end - next_emit);
+					
 					input->curr = input_end;
 					return (output->curr - output_start);
 				}
@@ -330,6 +411,8 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 	// We should never reach this point
 	return 0;
 }
+
+/************ Public Functions *************/
 
 snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, __mram_ptr uint32_t *header_buffer, uint32_t block_size)
 {

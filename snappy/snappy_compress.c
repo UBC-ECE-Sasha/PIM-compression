@@ -15,14 +15,20 @@
 #define MAX_HASH_TABLE_BITS 14
 #define MAX_HASH_TABLE_SIZE (1U << MAX_HASH_TABLE_BITS)
 
+/**
+ * Calculate the rounded down log base 2 of an unsigned integer.
+ *
+ * @param n: value to perform the calculation on
+ * @return Log base 2 floor of n
+ */
 static inline int32_t log2_floor(uint32_t n)
 {
 	return (n == 0) ? -1 : 31 ^ __builtin_clz(n);
 }
 
 /**
- * Write a varint to the output buffer. See previous function for description of
- * this format.
+ * Write a varint to the output buffer. See the decompression code
+ * for a description of this format.
  *
  * @param output: holds output buffer information
  * @param val: value to write
@@ -59,9 +65,9 @@ static inline void write_varint32(struct host_buffer_context *output, uint32_t v
 }
 
 /**
- * Write an unsigned integer to the output buffer. 
+ * Write an unsigned integer to the output buffer.
  *
- * @param ptr: where to write the integer
+ * @param ptr: pointer where to write the integer
  * @param val: value to write
  */
 static inline void write_uint32(uint8_t *ptr, uint32_t val)
@@ -73,7 +79,7 @@ static inline void write_uint32(uint8_t *ptr, uint32_t val)
 }
 
 /**
- * Read an unsigned integer to the output buffer. 
+ * Read an unsigned integer from the input buffer.
  *
  * @param ptr: where to read the integer from
  * @return Value read
@@ -89,6 +95,14 @@ static inline uint32_t read_uint32(uint8_t *ptr)
 	return val;
 }
 
+/**
+ * Get the size of the hash table needed for the size we are
+ * compressing, and reset the values in the table.
+ *
+ * @param table: pointer to the start of the hash table
+ * @param size_to_compress: size we are compressing
+ * @param table_size[out]: size of the table needed to compress size_to_compress
+ */
 static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, uint32_t *table_size)
 {
 	*table_size = 256;
@@ -99,11 +113,17 @@ static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, ui
 }
 
 /**
+ * Hash function.
+ *
  * Any hash function will produce a valid compressed bitstream, but a good
  * hash function reduces the number of collisions and thus yields better
  * compression for compressible input, and more speed for incompressible
  * input. Of course, it doesn't hurt if the hash function is reasonably fast
  * either, as it gets called a lot.
+ *
+ * @param ptr: pointer to the value we want to hash
+ * @param shift: adjusts hash to be within table size
+ * @return Hash of four bytes stored at ptr
  */
 static inline uint32_t hash(uint8_t *ptr, int shift)
 {
@@ -112,6 +132,14 @@ static inline uint32_t hash(uint8_t *ptr, int shift)
 	return (bytes * kmul) >> shift;
 }
 
+/**
+ * Find the number of bytes in common between s1 and s2.
+ *
+ * @param s1: first buffer to compare
+ * @param s2: second buffer to compare
+ * @param s2_limit: end of second buffer to compare
+ * @return Number of bytes in common between s1 and s2
+ */
 static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_limit)
 {
 	int32_t matched = 0;
@@ -127,9 +155,17 @@ static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_li
 		s2++;
 		matched++;
 	}
+	
 	return matched;
 }
 
+/**
+ * Emit a literal element.
+ *
+ * @param output: holds output buffer information
+ * @param literal: buffer storing the literal data
+ * @param len: length of the literal
+ */
 static void emit_literal(struct host_buffer_context *output, uint8_t *literal, uint32_t len)
 {
 	//printf("emit_literal %d %d\n", len, output->curr-output->buffer);
@@ -155,6 +191,13 @@ static void emit_literal(struct host_buffer_context *output, uint8_t *literal, u
 	output->curr += len;
 }
 
+/**
+ * Emit a copy element that is less than 64-bytes in length.
+ *
+ * @param output: holds output buffer information
+ * @param offset: offset of the copy
+ * @param len: length of the copy
+ */
 static void emit_copy_less_than64(struct host_buffer_context *output, uint32_t offset, uint32_t len)
 {
 	if ((len < 12) && (offset < 2048)) {
@@ -168,6 +211,13 @@ static void emit_copy_less_than64(struct host_buffer_context *output, uint32_t o
 	}
 }
 
+/**
+ * Emit copy elements in chunks of length 64-bytes.
+ *
+ * @param output: holds output buffer information
+ * @param offset: offset of the copy
+ * @param len: length of the copy
+ */
 static void emit_copy(struct host_buffer_context *output, uint32_t offset, uint32_t len) 
 {
 	//printf("emit_copy %d %d %d\n", offset, len, output->curr - output->buffer);
@@ -188,6 +238,17 @@ static void emit_copy(struct host_buffer_context *output, uint32_t offset, uint3
 	emit_copy_less_than64(output, offset, len);
 }
 
+/**
+ * Perform Snappy compression on a block of input data, and save the compressed
+ * data to the output buffer.
+ *
+ * @param input: holds input buffer information
+ * @param output: holds output buffer information
+ * @param input_size: size of the input to compress
+ * @param table: pointer to allocated hash table
+ * @param table_size: size of the hash table
+ * @return Resulting compressed size
+ */
 static uint32_t compress_block(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
 	uint8_t *output_start = output->curr;
@@ -315,6 +376,9 @@ emit_remainder:
 
 	return (output->curr - output_start);
 }
+
+
+/*************** Public Functions *******************/
 
 void setup_compression(struct host_buffer_context *input, struct host_buffer_context *output) 
 {

@@ -9,7 +9,7 @@ endif
 
 # Default Parameters
 NR_DPUS = 1
-NR_TASKLETS = 16
+NR_TASKLETS = 1
 
 SOURCE = dpu_snappy.c snappy_compress.c snappy_decompress.c
 

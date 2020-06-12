@@ -36,7 +36,7 @@ The implementation in this repository is highly based off of the C port of Googl
 
 `make` to build both the host and DPU programs. 
 
-The default number of DPUs used is 1 and the default number of DPU tasklets is 16. To override the default use:
+The default number of DPUs used is 1 and the default number of DPU tasklets is 1. To override the default use:
 
 `make NR_DPUS=<# dpus> NR_TASKLETS=<# tasks>`.
 

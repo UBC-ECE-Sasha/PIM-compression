@@ -12,6 +12,8 @@
 // out_buffer_context
 #define OUT_BUFFER_LENGTH 256
 
+// Location of input buffer in MRAM. Making this global avoids
+// having to pass the pointer around.
 extern __mram_ptr uint8_t *input_buf;
 
 typedef struct in_buffer_context
@@ -26,10 +28,10 @@ typedef struct in_buffer_context
 typedef struct out_buffer_context
 {
 	__mram_ptr uint8_t *buffer; // Entire buffer in MRAM
-	uint8_t *append_ptr;
-	uint32_t append_window;
-	uint32_t curr;
-	uint32_t length;
+	uint8_t *append_ptr; 		// Append window in MRAM
+	uint32_t append_window;		// Offset of output buffer mapped by append window
+	uint32_t curr;				// Current offset in output buffer in MRAM
+	uint32_t length;			// Total size of output buffer in bytes
 } out_buffer_context;
 
 /**
@@ -37,6 +39,7 @@ typedef struct out_buffer_context
  *
  * @param input: holds input buffer information
  * @param output: holds output buffer information
+ * @param header_buffer: buffer holding compressed lengths of each block
  * @param block_size: size to compress at a time
  * @return SNAPPY_OK if successful, error code otherwise
  */
