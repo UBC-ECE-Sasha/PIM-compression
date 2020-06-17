@@ -9,9 +9,9 @@ endif
 
 # Default Parameters
 NR_DPUS = 1
-NR_TASKLETS = 16
+NR_TASKLETS = 1
 
-SOURCE = dpu_snappy.c
+SOURCE = dpu_snappy.c snappy_compress.c snappy_decompress.c
 
 .PHONY: default all dpu host clean tags
 
@@ -20,15 +20,17 @@ default: all
 all: dpu host
 
 clean:
-	$(RM) decompress
+	$(RM) dpu_snappy
 	$(MAKE) -C dpu-decompress $@
+	$(MAKE) -C dpu-compress $@
 
 dpu:
 	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-decompress
+	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-compress
 
-host: decompress
+host: dpu_snappy
 	
-decompress: $(SOURCE)
+dpu_snappy: $(SOURCE)
 	$(CC) $(CFLAGS) -DNR_DPUS=$(NR_DPUS) -DNR_TASKLETS=$(NR_TASKLETS) $^ -o $@ $(DPU_OPTS)
 
 tags:
@@ -50,9 +52,9 @@ test/:
 # alternative diff command:
 # bash -c "diff <(xxd test/$*.host_output) <(xxd ../test/$*.txt)"
 test/%.host_verified: ../test/%.snappy ../test/%.txt all
-	./decompress -i $< -o test/$*.host_uncompressed 2>&1 | tee test/$*.host_output
+	./dpu_snappy -i $< -o test/$*.host_uncompressed 2>&1 | tee test/$*.host_output
 	cmp test/$*.host_uncompressed ../test/$*.txt
 
 test/%.dpu_verified: ../test/%.snappy ../test/%.txt all
-	./decompress -d -i $< -o test/$*.dpu_uncompressed 2>&1 | tee test/$*.dpu_output
+	./dpu_snappy -d -i $< -o test/$*.dpu_uncompressed 2>&1 | tee test/$*.dpu_output
 	cmp test/$*.dpu_uncompressed ../test/$*.txt
