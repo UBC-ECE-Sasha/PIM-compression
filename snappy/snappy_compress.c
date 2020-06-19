@@ -494,8 +494,8 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	uint32_t input_block_offset[NR_DPUS][NR_TASKLETS] = {0};
 	uint32_t output_offset[NR_DPUS][NR_TASKLETS] = {0};
 	
-	uint8_t dpu_idx = 0;
-	uint8_t task_idx = 0;
+	uint32_t dpu_idx = 0;
+	uint32_t task_idx = 0;
 	uint32_t dpu_blocks = 0;
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
@@ -531,6 +531,10 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	uint32_t header_buffer_start[NR_DPUS];
 	uint32_t output_buffer_start[NR_DPUS];
 	DPU_FOREACH(dpus, dpu) {
+		// Add check to get rid of array out of bounds compiler warning
+		if (dpu_idx == NR_DPUS)
+			break; 
+
 		uint32_t input_length = 0;
 		if ((dpu_idx != (NR_DPUS - 1)) && (input_block_offset[dpu_idx + 1][0] != 0)) {
 			uint32_t blocks = (input_block_offset[dpu_idx + 1][0] - input_block_offset[dpu_idx][0]);
@@ -579,7 +583,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			if (output_length[i] != 0) {
 				uint32_t header_tasklet_start = header_buffer_start[dpu_idx] + ((input_block_offset[dpu_idx][i] << 1) * sizeof(uint32_t));
 				uint32_t header_tasklet_len = 0;
-				if ((i < (NR_TASKLETS - 1)) && input_block_offset[dpu_idx][i + 1] != 0)
+				if ((i != (NR_TASKLETS - 1)) && input_block_offset[dpu_idx][i + 1] != 0)
 					header_tasklet_len = (input_block_offset[dpu_idx][i + 1] - input_block_offset[dpu_idx][i]) * sizeof(uint32_t);
 				else
 					header_tasklet_len = header_length[dpu_idx] - (input_block_offset[dpu_idx][i] * sizeof(uint32_t));
