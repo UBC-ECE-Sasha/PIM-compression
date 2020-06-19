@@ -511,6 +511,8 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			output_offset[dpu_idx][task_idx] = ALIGN(snappy_max_compressed_length(block_size * dpu_blocks), 64);
 			task_idx++;
 		}
+
+		dpu_blocks++;
 	}
 
 	// Write the decompressed block size and length
@@ -541,7 +543,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		} 
 
 		header_buffer_start[dpu_idx] = ALIGN(input_buffer_start + input_length, 64);
-		output_buffer_start[dpu_idx] = ALIGN(header_buffer_start[dpu_idx] + header_length[dpu_idx], 64);
+		output_buffer_start[dpu_idx] = ALIGN(header_buffer_start[dpu_idx] + (header_length[dpu_idx] << 1), 64);
 
 		// Set up and load the DPU program
      	DPU_ASSERT(dpu_load(dpu, DPU_COMPRESS_PROGRAM, NULL));
@@ -573,16 +575,28 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		uint32_t output_length[NR_TASKLETS];
         DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, output_length, sizeof(uint32_t) * NR_TASKLETS));
 		
-		for (uint8_t i = 0; i < 1; i++) {
-			DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, compr_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8), 0));
-printf("copy\n");
-			output->length += output_length[i];
-			compr_data += output_length[i];			
+		for (uint8_t i = 0; i < NR_TASKLETS; i++) {
+			if (output_length[i] != 0) {
+				uint32_t header_tasklet_start = header_buffer_start[dpu_idx] + ((input_block_offset[dpu_idx][i] << 1) * sizeof(uint32_t));
+				uint32_t header_tasklet_len = 0;
+				if ((i < (NR_TASKLETS - 1)) && input_block_offset[dpu_idx][i + 1] != 0)
+					header_tasklet_len = (input_block_offset[dpu_idx][i + 1] - input_block_offset[dpu_idx][i]) * sizeof(uint32_t);
+				else
+					header_tasklet_len = header_length[dpu_idx] - (input_block_offset[dpu_idx][i] * sizeof(uint32_t));
+
+				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr, header_tasklet_start, ALIGN(header_tasklet_len, 8), 0));
+				output->curr += header_tasklet_len;
+				output->length += header_tasklet_len;
+			}
 		}
-printf("copydats\n");
-		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr, header_buffer_start[dpu_idx], ALIGN(header_length[dpu_idx], 8), 0));
-		output->curr += header_length[dpu_idx];
-		output->length += header_length[dpu_idx];
+	
+		for (uint8_t i = 0; i < NR_TASKLETS; i++) {
+			if (output_length[i] != 0) {
+				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, compr_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8), 0));
+				output->length += output_length[i];
+				compr_data += output_length[i];
+			}			
+		}
 
         printf("------DPU 0 Logs------\n");
         DPU_ASSERT(dpu_log_read(dpu, stdout));

@@ -42,13 +42,14 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
 /**
  * Read an unsigned integer from input_buffer in MRAM.
  *
+ * @param input: holds input buffer information
  * @param offset: offset from start of input_buffer to read from
  * @return Value read
  */
-static inline uint32_t read_uint32(uint32_t offset)
+static inline uint32_t read_uint32(struct in_buffer_context *input, uint32_t offset)
 {
 	uint8_t data_read[16];
-	mram_read(&input_buf[WINDOW_ALIGN(offset, 8)], data_read, 16);
+	mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
 
 	offset %= 8;
 	return (data_read[offset] |
@@ -147,17 +148,18 @@ static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, ui
  * input. Of course, it doesn't hurt if the hash function is reasonably fast
  * either, as it gets called a lot.
  *
+ * @param input: holds input buffer information
  * @param ptr: pointer to the value we want to hash
  * @param shift: adjusts hash to be within table size
  * @return Hash of four bytes stored at ptr
  */
-static inline uint32_t hash(uint32_t ptr, int shift)
+static inline uint32_t hash(struct in_buffer_context *input, uint32_t ptr, int shift)
 {
 /*	uint32_t kmul = 0x1e35a7bd;
 	uint32_t bytes = read_uint32(ptr);
 	return (bytes * kmul) >> shift; */
 	uint32_t hash1, hash2;
-	uint32_t bytes = read_uint32(ptr);
+	uint32_t bytes = read_uint32(input, ptr);
 	__builtin_hash_rrr(hash1, bytes, 0xFFFFF);
 	__builtin_hash_rrr(hash2, bytes >> 2, 0xFFFFF);
 	return hash1 ^ hash2; 
@@ -166,23 +168,24 @@ static inline uint32_t hash(uint32_t ptr, int shift)
 /**
  * Find the number of bytes in common between s1 and s2.
  *
+ * @param input: holds input buffer information
  * @param s1: offset of first buffer from input buffer start
  * @param s2: offset of second buffer from input buffer start
  * @param s2_limit: offset of end of second bufer from input buffer start
  * @return Number of bytes in common between s1 and s2
  */
-static inline int32_t find_match_length(uint32_t s1, uint32_t s2, uint32_t s2_limit)
+static inline int32_t find_match_length(struct in_buffer_context *input, uint32_t s1, uint32_t s2, uint32_t s2_limit)
 {
 	int32_t matched = 0;
 	
 	// Check by increments of 4 first
-	while ((s2 <= (s2_limit - 4)) && (read_uint32(s2) == read_uint32(s1 + matched))) {
+	while ((s2 <= (s2_limit - 4)) && (read_uint32(input, s2) == read_uint32(input, s1 + matched))) {
 		s2 += 4;
 		matched += 4;
 	}
 
 	// Remaining bytes
-	uint32_t x = read_uint32(s1 + matched) ^ read_uint32(s2);
+	uint32_t x = read_uint32(input, s1 + matched) ^ read_uint32(input, s2);
 	matched += MIN((__builtin_ctz(x) >> 3), s2_limit - s2);
 
 	return matched;
@@ -305,7 +308,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 		const uint32_t input_limit = input->curr + input_size - input_margin_bytes;
 		
 		uint32_t next_hash;
-		for (next_hash = hash(++input->curr, shift);;) {
+		for (next_hash = hash(input, ++input->curr, shift);;) {
 			/*
 			 * The body of this loop calls EmitLiteral once and then EmitCopy one or
 			 * more times.	(The exception is that when we're close to exhausting
@@ -350,10 +353,10 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 					return (output->curr - output_start);
 				}		
 
-				next_hash = hash(next_input, shift);
+				next_hash = hash(input, next_input, shift);
 				candidate = base_input + table[hval];
 				table[hval] = input->curr - base_input;
-			} while (read_uint32(input->curr) != read_uint32(candidate));
+			} while (read_uint32(input, input->curr) != read_uint32(input, candidate));
 			
 			/*
 			 * Step 2: A 4-byte match has been found.  We'll later see if more
@@ -380,7 +383,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				 *	"literal bytes" prior to input->curr.
 				 */
 				const uint32_t base = input->curr;
-				int32_t matched = 4 + find_match_length(candidate + 4, input->curr + 4, input_end);
+				int32_t matched = 4 + find_match_length(input, candidate + 4, input->curr + 4, input_end);
 				input->curr += matched;
 				advance_seqread(input, matched);
 					
@@ -401,15 +404,15 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 					return (output->curr - output_start);
 				}
 
-				uint32_t prev_hash = hash(insert_tail, shift);
+				uint32_t prev_hash = hash(input, insert_tail, shift);
 				table[prev_hash] = input->curr - base_input - 1;
 
-				uint32_t curr_hash = hash(insert_tail + 1, shift);
+				uint32_t curr_hash = hash(input, insert_tail + 1, shift);
 				candidate = base_input + table[curr_hash];
 				table[curr_hash] = input->curr - base_input;
-			} while(read_uint32(insert_tail + 1) == read_uint32(candidate));
+			} while(read_uint32(input, insert_tail + 1) == read_uint32(input, candidate));
 
-			next_hash = hash(insert_tail + 2, shift);
+			next_hash = hash(input, insert_tail + 2, shift);
 			input->curr++;
 		}
 	}
@@ -422,7 +425,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 
 snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, __mram_ptr uint32_t *header_buffer, uint32_t block_size)
 {
-	// Allocate the hash table for compression, TODO: do something about this size
+	// Allocate the hash table for compression
 	uint16_t *table = (uint16_t *)mem_alloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
 
 	bool idx = 0;
@@ -451,7 +454,8 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 	}
 
 	// Write out the last compressed length
-	mram_write(compr_length, header_buffer, 8);
+	if (idx) 
+		mram_write(compr_length, header_buffer, 8);
 
 	// Write out last buffer to MRAM
 	output->length = output->curr;
