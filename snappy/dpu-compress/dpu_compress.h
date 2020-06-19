@@ -12,12 +12,9 @@
 // out_buffer_context
 #define OUT_BUFFER_LENGTH 256
 
-// Location of input buffer in MRAM. Making this global avoids
-// having to pass the pointer around.
-extern __mram_ptr uint8_t *input_buf;
-
 typedef struct in_buffer_context
 {
+	__mram_ptr uint8_t *buffer;
 	uint8_t *ptr;
 	seqreader_buffer_t cache;
 	seqreader_t sr;
