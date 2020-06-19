@@ -5,6 +5,7 @@
 #include <mram.h>
 #include <defs.h>
 #include "alloc.h"
+#include "built_ins.h"
 
 #include "dpu_compress.h"
 
@@ -12,7 +13,7 @@
  * This value could be halfed or quartered to save memory
  * at the cost of slightly worse compression.
  */
-#define MAX_HASH_TABLE_BITS 14
+#define MAX_HASH_TABLE_BITS 10
 #define MAX_HASH_TABLE_SIZE (1U << MAX_HASH_TABLE_BITS)
 
 /**
@@ -152,9 +153,14 @@ static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, ui
  */
 static inline uint32_t hash(uint32_t ptr, int shift)
 {
-	uint32_t kmul = 0x1e35a7bd;
+/*	uint32_t kmul = 0x1e35a7bd;
 	uint32_t bytes = read_uint32(ptr);
-	return (bytes * kmul) >> shift;
+	return (bytes * kmul) >> shift; */
+	uint32_t hash1, hash2;
+	uint32_t bytes = read_uint32(ptr);
+	__builtin_hash_rrr(hash1, bytes, 0xFFFFF);
+	__builtin_hash_rrr(hash2, bytes >> 2, 0xFFFFF);
+	return hash1 ^ hash2; 
 }
 
 /**
