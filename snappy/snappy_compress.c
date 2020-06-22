@@ -550,34 +550,34 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		output_buffer_start[dpu_idx] = ALIGN(header_buffer_start[dpu_idx] + (header_length[dpu_idx] << 1), 64);
 
 		// Set up and load the DPU program
-     	DPU_ASSERT(dpu_load(dpu, DPU_COMPRESS_PROGRAM, NULL));
+		DPU_ASSERT(dpu_load(dpu, DPU_COMPRESS_PROGRAM, NULL));
 		DPU_ASSERT(dpu_copy_to(dpu, "block_size", 0, &block_size, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to(dpu, "input_block_offset", 0, input_block_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to(dpu, "input_block_offset", 0, input_block_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "header_buffer", 0, &header_buffer_start[dpu_idx], sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start[dpu_idx], sizeof(uint32_t)));
-        DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_block_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
+		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start[dpu_idx], sizeof(uint32_t)));
+		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_block_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
 
 		dpu_idx++;
 	}
 	
 	// Launch all DPUs
-    int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
-    if (ret != 0)
-    {
-        DPU_ASSERT(dpu_free(dpus));
-        return SNAPPY_INVALID_INPUT;
-    }
+	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
+	if (ret != 0)
+	{
+		DPU_ASSERT(dpu_free(dpus));
+		return SNAPPY_INVALID_INPUT;
+	}
 
-    // Deallocate the DPUs
+	// Deallocate the DPUs
 	dpu_idx = 0;
 	uint8_t *compr_data = output->curr + (num_blocks * sizeof(uint32_t));
-    DPU_FOREACH(dpus, dpu) {
-        // Get the compressed data
+	DPU_FOREACH(dpus, dpu) {
+		// Get the compressed data
 		uint32_t output_length[NR_TASKLETS];
-        DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, output_length, sizeof(uint32_t) * NR_TASKLETS));
+		DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, output_length, sizeof(uint32_t) * NR_TASKLETS));
 		
 		for (uint8_t i = 0; i < NR_TASKLETS; i++) {
 			if (output_length[i] != 0) {
@@ -602,11 +602,11 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			}			
 		}
 
-        printf("------DPU 0 Logs------\n");
-        DPU_ASSERT(dpu_log_read(dpu, stdout));
-    }
+		printf("------DPU 0 Logs------\n");
+		DPU_ASSERT(dpu_log_read(dpu, stdout));
+	}
 
-    DPU_ASSERT(dpu_free(dpus));
+	DPU_ASSERT(dpu_free(dpus));
 
-    return SNAPPY_OK;
+	return SNAPPY_OK;
 }

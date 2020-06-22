@@ -51,14 +51,14 @@ int main()
 		int32_t input_end = input_block_offset[idx + 1] * block_size;
 
 		// If the end position is zero, then the next task has no work
-        // to run. Use the remainder of the input length to calculate this
-        // task's length.
-        if (input_end == 0) {
-            input.length = input_length - input_start;
-        }
-        else {
-            input.length = input_end - input_start;
-        }
+		// to run. Use the remainder of the input length to calculate this
+		// task's length.
+		if (input_end == 0) {
+			input.length = input_length - input_start;
+		}
+		else {
+			input.length = input_end - input_start;
+		}
 	}
 	else {
 		input.length = input_length - input_start;
