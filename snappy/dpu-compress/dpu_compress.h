@@ -5,12 +5,28 @@
 #ifndef _DPU_COMPRESS_H_
 #define _DPU_COMPRESS_H_
 
-#include "../dpu_snappy.h"
+#include "common.h"
 #include <seqread.h>
 
 // Length of the "append window" and "read window" in the
 // out_buffer_context
 #define OUT_BUFFER_LENGTH 256
+
+// Return values
+typedef enum {
+    SNAPPY_OK = 0,              // Success code
+    SNAPPY_INVALID_INPUT,       // Input file has an invalid format
+    SNAPPY_BUFFER_TOO_SMALL     // Input or output file size is too large
+} snappy_status;
+
+// Snappy tag types
+enum element_type
+{
+    EL_TYPE_LITERAL,
+    EL_TYPE_COPY_1,
+    EL_TYPE_COPY_2,
+    EL_TYPE_COPY_4
+};
 
 typedef struct in_buffer_context
 {

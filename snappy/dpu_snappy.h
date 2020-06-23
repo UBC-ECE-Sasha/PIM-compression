@@ -2,6 +2,7 @@
 #define _DPU_SNAPPY_H_
 
 #include "common.h"
+#include <sys/time.h>
 
 #define GET_ELEMENT_TYPE(_tag)  (_tag & BITMASK(2))
 #define GET_LENGTH_1_BYTE(_tag) ((_tag >> 2) & BITMASK(3))
@@ -35,6 +36,12 @@ typedef struct host_buffer_context
 	uint32_t length;		// Length of buffer
 	unsigned long max;		// Maximum allowed lenght of buffer
 } host_buffer_context;
+
+
+/**
+ * Calculate the difference between two timeval structs.
+ */
+double get_runtime(struct timeval *start, struct timeval *end);
 
 #endif	/* _DPU_SNAPPY_H_ */
 

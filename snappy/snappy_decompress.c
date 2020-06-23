@@ -167,55 +167,17 @@ static bool write_copy_host(struct host_buffer_context *output, uint32_t copy_le
 }
 
 
-snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_DPUS][NR_TASKLETS], uint32_t output_offset[NR_DPUS][NR_TASKLETS])
+snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time)
 {
-	uint32_t dpu_idx = 0;
-	uint32_t task_idx = 0;
+	struct timeval start;
+	struct timeval end;
+	gettimeofday(&start, NULL);
 
 	// Read the decompressed length
 	uint32_t dlength;
 	if (!read_varint32(input, &dlength)) {
 		fprintf(stderr, "Failed to read decompressed length\n");
 		return SNAPPY_INVALID_INPUT;
-	}
-
-	// Read the decompressed block size
-	uint32_t dblock_size;
-	if (!read_varint32(input, &dblock_size)) {
-		fprintf(stderr, "Failed to read decompressed block size\n");
-		return SNAPPY_INVALID_INPUT;
-	}
-
-	uint32_t num_blocks = (dlength + dblock_size - 1) / dblock_size;
-	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
-	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
-
-	uint32_t task_blocks = 0;
-	uint32_t total_offset = 0;
-	for (uint32_t i = 0; i < num_blocks; i++) {
-		// If we have reached the next DPU's boundary, update the index
-		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
-			dpu_idx++;
-			task_idx = 0;
-			task_blocks = 0;
-		}
-
-		// If we have reached the next task's boundary, log the offset
-		// to the input_offset and output_offset arrays. This should roughly
-		// evenly divide the work between NR_TASKLETS tasks on NR_DPUS.
-		if (task_blocks == (input_blocks_per_task * task_idx)) {
-			input_offset[dpu_idx][task_idx] = total_offset;
-			output_offset[dpu_idx][task_idx] = i * dblock_size;
-			task_idx++;
-		}
-
-		// Read the compressed block size
-		total_offset += (*input->curr & 0xFF) |
-				((*(input->curr + 1) & 0xFF) << 8) |
-				((*(input->curr + 2) & 0xFF) << 16) |
-				((*(input->curr + 3) & 0xFF) << 24);
-		task_blocks++;
-		input->curr += sizeof(uint32_t);
 	}
 
 	// Check that uncompressed length is within the max we can store
@@ -229,12 +191,25 @@ snappy_status setup_decompression(struct host_buffer_context *input, struct host
 	output->curr = output->buffer;
 	output->length = dlength;
 
+	gettimeofday(&end, NULL);
+	*preproc_time += get_runtime(&start, &end);
+
 	return SNAPPY_OK;
 }
 
 
 snappy_status snappy_decompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
 {
+	// Read the decompressed block size
+	uint32_t dblock_size;
+	if (!read_varint32(input, &dblock_size)) {
+		fprintf(stderr, "Failed to read decompressed block size\n");
+		return SNAPPY_INVALID_INPUT;
+	}
+
+	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
+	input->curr += num_blocks * sizeof(uint32_t);
+
 	while (input->curr < (input->buffer + input->length)) {
 		uint16_t length;
 		uint32_t offset;
@@ -294,25 +269,77 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 }
 
 
-snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_offset[NR_DPUS][NR_TASKLETS], uint32_t output_offset[NR_DPUS][NR_TASKLETS])
+snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time, double *postproc_time)
 {
+	struct timeval start;
+	struct timeval end;
+	gettimeofday(&start, NULL);
+
+	// Calculate workload of each task
+	uint32_t dblock_size;
+	if (!read_varint32(input, &dblock_size)) {
+		fprintf(stderr, "Failed to read decompressed block size\n");
+		return SNAPPY_INVALID_INPUT;
+	}
+
+	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
+	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
+	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
+
+	uint32_t input_offset[NR_DPUS][NR_TASKLETS];
+	uint32_t output_offset[NR_DPUS][NR_TASKLETS];
+
+	uint32_t dpu_idx = 0;
+	uint32_t task_idx = 0;
+	uint32_t task_blocks = 0;
+	uint32_t total_offset = 0;
+	for (uint32_t i = 0; i < num_blocks; i++) {
+		// If we have reached the next DPU's boundary, update the index
+		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
+			dpu_idx++;
+			task_idx = 0;
+			task_blocks = 0;
+		}
+
+		// If we have reached the next task's boundary, log the offset
+		// to the input_offset and output_offset arrays. This should roughly
+		// evenly divide the work between NR_TASKLETS tasks on NR_DPUS.
+		if (task_blocks == (input_blocks_per_task * task_idx)) {
+			input_offset[dpu_idx][task_idx] = total_offset;
+			output_offset[dpu_idx][task_idx] = i * dblock_size;
+			task_idx++;
+		}
+
+		// Read the compressed block size
+		total_offset += (*input->curr & 0xFF) |
+				((*(input->curr + 1) & 0xFF) << 8) |
+				((*(input->curr + 2) & 0xFF) << 16) |
+				((*(input->curr + 3) & 0xFF) << 24);
+		task_blocks++;
+		input->curr += sizeof(uint32_t);
+	}
+
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;
 
 	// Allocate a DPU
-	 DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
+	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 
 	// Calculate input length without header and aligned output length
 	uint32_t total_input_length = input->length - (input->curr - input->buffer);
 	uint32_t aligned_output_length = ALIGN(output->length, 8);
 
-	uint32_t dpu_idx = 0;
 	uint32_t input_length;
 	uint32_t output_length;
 
+	dpu_idx = 0;
 	uint32_t input_buffer_start = 1024 * 1024;
 	uint32_t output_buffer_start;
 	DPU_FOREACH(dpus, dpu) {
+		// Add check to get rid of array out of bounds compiler warning
+		if (dpu_idx == NR_DPUS)
+			break;
+
 		// Calculate input and output lengths for each DPU
 		if ((dpu_idx != (NR_DPUS - 1)) && (input_offset[dpu_idx + 1][0] != 0)) {
 			input_length = input_offset[dpu_idx + 1][0] - input_offset[dpu_idx][0];
@@ -343,6 +370,9 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		dpu_idx++;
 	}
 
+	gettimeofday(&end, NULL);
+	*preproc_time += get_runtime(&start, &end);
+
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
 	if (ret != 0)
@@ -350,6 +380,8 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_free(dpus));
 		return SNAPPY_INVALID_INPUT;
 	}
+
+	gettimeofday(&start, NULL);
 
 	// Deallocate the DPUs
 	dpu_idx = 0;
@@ -368,6 +400,9 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	DPU_ASSERT(dpu_free(dpus));
+
+	gettimeofday(&end, NULL);
+	*postproc_time += get_runtime(&start, &end);
 
 	return SNAPPY_OK;
 }	

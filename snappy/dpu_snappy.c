@@ -4,7 +4,6 @@
 #include <string.h>
 #include <limits.h>
 #include <getopt.h>
-#include <sys/time.h>
 
 #include "dpu_snappy.h"
 #include "snappy_compress.h"
@@ -84,6 +83,15 @@ static void usage(const char *exe_name)
 }
 
 /**
+ * Calculate the difference between two timeval structs.
+ */
+double get_runtime(struct timeval *start, struct timeval *end) {
+	double start_time = start->tv_sec + start->tv_usec / 1000000.0;
+	double end_time = end->tv_sec + end->tv_usec / 1000000.0;
+	return (end_time - start_time);
+}
+
+/**
  * Outputs the size of the decompressed snappy file.
  */
 int main(int argc, char **argv)
@@ -156,12 +164,16 @@ int main(int argc, char **argv)
 	if (read_input_host(input_file, &input))
 		return -1;
 
+	double preproc_time = 0.0;
+	double alg_time = 0.0;
+	double postproc_time = 0.0;
+
 	if (compress) {
-		setup_compression(&input, &output);
+		setup_compression(&input, &output, &preproc_time);
 
 		if (use_dpu)
 		{
-			status = snappy_compress_dpu(&input, &output, block_size);
+			status = snappy_compress_dpu(&input, &output, block_size, &preproc_time, &postproc_time);
 		}
 		else
 		{
@@ -172,20 +184,16 @@ int main(int argc, char **argv)
 			status = snappy_compress_host(&input, &output, block_size);
 			gettimeofday(&end, NULL);
 
-			double start_time = start.tv_sec + start.tv_usec / 1000000.0;
-			double end_time = end.tv_sec + end.tv_usec / 1000000.0;
-			printf("Host completed in %f seconds\n", end_time - start_time);
+			alg_time = get_runtime(&start, &end);
 		}
 	}
 	else {
-		uint32_t input_offset[NR_DPUS][NR_TASKLETS] = {0};
-		uint32_t output_offset[NR_DPUS][NR_TASKLETS] = {0};
-		if (setup_decompression(&input, &output, input_offset, output_offset))
+		if (setup_decompression(&input, &output, &preproc_time))
 			return -1;
 
 		if (use_dpu)
 		{
-			status = snappy_decompress_dpu(&input, &output, input_offset, output_offset);
+			status = snappy_decompress_dpu(&input, &output, &preproc_time, &postproc_time);
 		}
 		else
 		{
@@ -196,9 +204,7 @@ int main(int argc, char **argv)
 			status = snappy_decompress_host(&input, &output);
 			gettimeofday(&end, NULL);
 
-			double start_time = start.tv_sec + start.tv_usec / 1000000.0;
-			double end_time = end.tv_sec + end.tv_usec / 1000000.0;
-			printf("Host completed in %f seconds\n", end_time - start_time);
+			alg_time = get_runtime(&start, &end);
 		}
 	}
 	
@@ -207,6 +213,10 @@ int main(int argc, char **argv)
 		// Write the output buffer from main memory to a file
 		write_output_host(output_file, &output);
 		printf("%s %u bytes to: %s\n", (compress == 1) ? "Compressed" : "Decompressed", output.length, output_file);
+	
+		printf("Pre-processing time: %f\n", preproc_time);
+		printf("Host time: %f\n", alg_time);
+		printf("Post-processing time: %f\n", postproc_time);
 	}
 	else
 	{

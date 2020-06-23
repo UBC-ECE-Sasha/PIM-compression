@@ -413,8 +413,12 @@ emit_remainder:
 
 /*************** Public Functions *******************/
 
-void setup_compression(struct host_buffer_context *input, struct host_buffer_context *output) 
+void setup_compression(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time) 
 {
+	struct timeval start;
+	struct timeval end;
+	gettimeofday(&start, NULL);
+
 	/*
 	 * Compressed data can be defined as:
 	 *	  compressed := item* literal*
@@ -441,6 +445,9 @@ void setup_compression(struct host_buffer_context *input, struct host_buffer_con
 	output->buffer = malloc(sizeof(uint8_t) * max_compressed_length);
 	output->curr = output->buffer;
 	output->length = 0;
+
+	gettimeofday(&end, NULL);
+	*preproc_time += get_runtime(&start, &end);
 }
 
 snappy_status snappy_compress_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size)
@@ -484,8 +491,12 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 	return SNAPPY_OK;
 }
 
-snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size)
+snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size, double *preproc_time, double *postproc_time)
 {
+	struct timeval start;
+	struct timeval end;
+	gettimeofday(&start, NULL);
+
 	// Calculate the workload of each task
 	uint32_t num_blocks = (input->length + block_size - 1) / block_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
@@ -562,6 +573,9 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 
 		dpu_idx++;
 	}
+
+	gettimeofday(&end, NULL);
+	*preproc_time += get_runtime(&start, &end);
 	
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -570,6 +584,8 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		DPU_ASSERT(dpu_free(dpus));
 		return SNAPPY_INVALID_INPUT;
 	}
+
+	gettimeofday(&start, NULL);
 
 	// Deallocate the DPUs
 	dpu_idx = 0;
@@ -607,6 +623,9 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	}
 
 	DPU_ASSERT(dpu_free(dpus));
+
+	gettimeofday(&end, NULL);
+	*postproc_time += get_runtime(&start, &end);
 
 	return SNAPPY_OK;
 }
