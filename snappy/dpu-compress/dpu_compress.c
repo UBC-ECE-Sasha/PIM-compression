@@ -10,11 +10,10 @@
 #include "dpu_compress.h"
 
 /**
- * This value could be halfed or quartered to save memory
- * at the cost of slightly worse compression.
+ * WRAM space in bytes remaining per tasklet after allocated
+ * buffers and stack are accounted for.
  */
-#define MAX_HASH_TABLE_BITS 10
-#define MAX_HASH_TABLE_SIZE (1U << MAX_HASH_TABLE_BITS)
+#define WRAM_PER_TASKLET ((65536 - (2 * OUT_BUFFER_LENGTH) - STACK_SIZE_DEFAULT) / NR_TASKLETS)
 
 /**
  * Calculate the rounded down log base 2 of an unsigned integer.
@@ -120,23 +119,6 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 			curr_index = 0;
 		}
 	}
-}
-
-/**
- * Get the size of the hash table needed for the size we are
- * compressing, and reset the values in the table.
- *
- * @param table: pointer to the start of the hash table
- * @param size_to_compress: size we are compressing
- * @param table_size[out]: size of the table needed to compress size_to_compress
- */
-static inline void get_hash_table(uint16_t *table, uint32_t size_to_compress, uint32_t *table_size)
-{
-	*table_size = 256;
-	while ((*table_size < MAX_HASH_TABLE_SIZE) && (*table_size < size_to_compress))
-		*table_size <<= 1;
-
-	memset(table, 0, *table_size * sizeof(*table));
 }
 
 /**
@@ -425,8 +407,12 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 
 snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, __mram_ptr uint32_t *header_buffer, uint32_t block_size)
 {
+	// Calculate hash table size
+	uint32_t table_size = 1 << log2_floor(WRAM_PER_TASKLET);
+	uint32_t num_table_entries = table_size >> 1;
+	
 	// Allocate the hash table for compression
-	uint16_t *table = (uint16_t *)mem_alloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
+	uint16_t *table = (uint16_t *)mem_alloc(table_size);
 
 	bool idx = 0;
 	uint32_t compr_length[2];
@@ -436,11 +422,10 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 		uint32_t to_compress = MIN(length_remain, block_size);
 
 		// Get the size of the hash table used for this block
-		uint32_t table_size;
-		get_hash_table(table, to_compress, &table_size);
-		
+		memset(table, 0, table_size);	
+	
 		// Compress the current block
-		uint32_t compressed_len = compress_block(input, output, to_compress, table, table_size);
+		uint32_t compressed_len = compress_block(input, output, to_compress, table, num_table_entries);
 		
 		// Write out the compressed length of this block
 		compr_length[idx] = compressed_len;
