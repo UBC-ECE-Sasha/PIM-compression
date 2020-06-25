@@ -78,7 +78,7 @@ int main()
 		output_length[idx] = output.length;
 	}
 
-	printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get());
+	printf("Tasklet %d: completed in %ld cycles %d\n", idx, perfcounter_get(), output.length);
 	return 0;
 }
 

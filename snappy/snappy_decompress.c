@@ -377,8 +377,8 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
 	if (ret != 0)
 	{
-//		DPU_ASSERT(dpu_free(dpus));
-//		return SNAPPY_INVALID_INPUT;
+		DPU_ASSERT(dpu_free(dpus));
+		return SNAPPY_INVALID_INPUT;
 	}
 
 	gettimeofday(&start, NULL);

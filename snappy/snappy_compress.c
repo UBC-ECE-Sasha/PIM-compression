@@ -556,7 +556,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			input_length = input->length - (input_block_offset[dpu_idx][0] * block_size);
 			header_length[dpu_idx] = (num_blocks - input_block_offset[dpu_idx][0]) * sizeof(uint32_t);
 		} 
-
+		
 		header_buffer_start[dpu_idx] = ALIGN(input_buffer_start + input_length, 64);
 		output_buffer_start[dpu_idx] = ALIGN(header_buffer_start[dpu_idx] + (header_length[dpu_idx] << 1), 64);
 
@@ -591,33 +591,45 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	dpu_idx = 0;
 	uint8_t *compr_data = output->curr + (num_blocks * sizeof(uint32_t));
 	DPU_FOREACH(dpus, dpu) {
-		// Get the compressed data
+		// Get the output length of each tasklet
 		uint32_t output_length[NR_TASKLETS];
 		DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, output_length, sizeof(uint32_t) * NR_TASKLETS));
-		
+
+		// Get the entire header
+		uint32_t curr_header_length = ALIGN((header_length[dpu_idx] << 1), 8);
+		uint8_t *header_data = malloc(curr_header_length);
+		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, header_data, header_buffer_start[dpu_idx], curr_header_length, 0));
+
+		uint32_t header_offset = 0;
 		for (uint8_t i = 0; i < NR_TASKLETS; i++) {
 			if (output_length[i] != 0) {
-				uint32_t header_tasklet_start = header_buffer_start[dpu_idx] + ((input_block_offset[dpu_idx][i] << 1) * sizeof(uint32_t));
+				// Copy the header for the current tasklet
 				uint32_t header_tasklet_len = 0;
 				if ((i != (NR_TASKLETS - 1)) && input_block_offset[dpu_idx][i + 1] != 0)
 					header_tasklet_len = (input_block_offset[dpu_idx][i + 1] - input_block_offset[dpu_idx][i]) * sizeof(uint32_t);
 				else
 					header_tasklet_len = header_length[dpu_idx] - (input_block_offset[dpu_idx][i] * sizeof(uint32_t));
 
-				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->curr, header_tasklet_start, ALIGN(header_tasklet_len, 8), 0));
+				memcpy(output->curr, header_data + header_offset, header_tasklet_len);
+				header_offset += (header_tasklet_len << 1);
+				
 				output->curr += header_tasklet_len;
 				output->length += header_tasklet_len;
-			}
-		}
-	
-		for (uint8_t i = 0; i < NR_TASKLETS; i++) {
-			if (output_length[i] != 0) {
-				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, compr_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8), 0));
+				
+				// Read the data from the current tasklet
+				uint8_t *tasklet_data = malloc(ALIGN(output_length[i], 8));
+				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, tasklet_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8), 0));
+				
+				memcpy(compr_data, tasklet_data, output_length[i]);
+				free(tasklet_data);
+				
 				output->length += output_length[i];
 				compr_data += output_length[i];
 			}			
 		}
-
+		
+		free(header_data);
+		
 		printf("------DPU 0 Logs------\n");
 		DPU_ASSERT(dpu_log_read(dpu, stdout));
 	}

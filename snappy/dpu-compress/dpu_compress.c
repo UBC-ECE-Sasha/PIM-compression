@@ -13,7 +13,7 @@
  * WRAM space in bytes remaining per tasklet after allocated
  * buffers and stack are accounted for.
  */
-#define WRAM_PER_TASKLET ((65536 - (2 * OUT_BUFFER_LENGTH) - STACK_SIZE_DEFAULT) / NR_TASKLETS)
+#define WRAM_PER_TASKLET ((65536 / NR_TASKLETS) - (2 * OUT_BUFFER_LENGTH) - STACK_SIZE_DEFAULT)
 
 /**
  * Calculate the rounded down log base 2 of an unsigned integer.
@@ -137,14 +137,19 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
  */
 static inline uint32_t hash(struct in_buffer_context *input, uint32_t ptr, int shift)
 {
-/*	uint32_t kmul = 0x1e35a7bd;
-	uint32_t bytes = read_uint32(ptr);
-	return (bytes * kmul) >> shift; */
-	uint32_t hash1, hash2;
+	uint32_t bytes = read_uint32(input, ptr);
+
+	uint32_t kmul = 0x1e35a7bd;
+	return (bytes * kmul) >> shift; 
+ 
+
+
+	/*uint32_t hash1, hash2;
 	uint32_t bytes = read_uint32(input, ptr);
 	__builtin_hash_rrr(hash1, bytes, 0xFFFFF);
 	__builtin_hash_rrr(hash2, bytes >> 2, 0xFFFFF);
 	return hash1 ^ hash2; 
+*/
 }
 
 /**
@@ -413,7 +418,7 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 	
 	// Allocate the hash table for compression
 	uint16_t *table = (uint16_t *)mem_alloc(table_size);
-
+	
 	bool idx = 0;
 	uint32_t compr_length[2];
 	uint32_t length_remain = input->length;
@@ -437,11 +442,11 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 		idx = !idx; 
 		length_remain -= to_compress;
 	}
-
+	
 	// Write out the last compressed length
 	if (idx) 
 		mram_write(compr_length, header_buffer, 8);
-
+	
 	// Write out last buffer to MRAM
 	output->length = output->curr;
 	if (output->append_window < output->length) {
