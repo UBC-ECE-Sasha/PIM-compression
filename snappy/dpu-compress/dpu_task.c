@@ -22,10 +22,10 @@ int main()
 	uint8_t idx = me();
 
 	printf("DPU starting, tasklet %d\n", idx);
-
+	
 	// Check that this tasklet has work to run
 	if ((idx != 0) && (input_block_offset[idx] == 0)) {
-		printf("Tasklet %d has nothing to run\n", idx);
+		//printf("Tasklet %d has nothing to run\n", idx);
 		output_length[idx] = 0;
 		return 0;
 	}
@@ -78,7 +78,7 @@ int main()
 		output_length[idx] = output.length;
 	}
 
-	printf("Tasklet %d: completed in %ld cycles %d\n", idx, perfcounter_get(), output.length);
+	printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get());
 	return 0;
 }
 
