@@ -138,18 +138,12 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 static inline uint32_t hash(struct in_buffer_context *input, uint32_t ptr, int shift)
 {
 	uint32_t bytes = read_uint32(input, ptr);
-
-	uint32_t kmul = 0x1e35a7bd;
-	return (bytes * kmul) >> shift; 
- 
-
-
-	/*uint32_t hash1, hash2;
-	uint32_t bytes = read_uint32(input, ptr);
-	__builtin_hash_rrr(hash1, bytes, 0xFFFFF);
-	__builtin_hash_rrr(hash2, bytes >> 2, 0xFFFFF);
-	return hash1 ^ hash2; 
-*/
+	bytes += (bytes << 15);
+	bytes ^= (bytes >> 12);
+	bytes += (bytes << 2);
+	bytes ^= (bytes >> 4);
+	bytes += (bytes << 11);
+	return (bytes >> shift);
 }
 
 /**
