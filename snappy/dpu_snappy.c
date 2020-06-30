@@ -212,7 +212,14 @@ int main(int argc, char **argv)
 	{
 		// Write the output buffer from main memory to a file
 		write_output_host(output_file, &output);
-		printf("%s %u bytes to: %s\n", (compress == 1) ? "Compressed" : "Decompressed", output.length, output_file);
+		if (compress) {
+			printf("Compressed %u bytes to: %s\n", output.length, output_file);
+			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
+		}
+		else {
+			printf("Decompressed %u bytes to: %s\n", output.length, output_file);
+			printf("Compression ratio: %f\n", 1 - (double)input.length / (double)output.length);
+		}
 	
 		printf("Pre-processing time: %f\n", preproc_time);
 		printf("Host time: %f\n", alg_time);

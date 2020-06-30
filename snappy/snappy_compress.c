@@ -569,7 +569,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "header_buffer", 0, &header_buffer_start[dpu_idx], sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start[dpu_idx], sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_block_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
+		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + (input_blocks_per_dpu * block_size), ALIGN(input_length, 8), 0));
 
 		dpu_idx++;
 	}
