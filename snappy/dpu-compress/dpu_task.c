@@ -48,12 +48,12 @@ int main()
 
 	// Calculate the length this tasklet parses
 	if (idx < (NR_TASKLETS - 1)) {
-		int32_t input_end = input_block_offset[idx + 1] * block_size;
+		int32_t input_end = (input_block_offset[idx + 1] - input_block_offset[0]) * block_size;
 
 		// If the end position is zero, then the next task has no work
 		// to run. Use the remainder of the input length to calculate this
 		// task's length.
-		if (input_end == 0) {
+		if (input_end <= 0) {
 			input.length = input_length - input_start;
 		}
 		else {
@@ -65,7 +65,7 @@ int main()
 	}
 	
 	// Calculate header buffer start
-	__mram_ptr uint32_t *header_buffer_start = header_buffer + (input_block_offset[idx] << 1);
+	__mram_ptr uint32_t *header_buffer_start = header_buffer + ((input_block_offset[idx] - input_block_offset[0]) << 1);
 	
 	perfcounter_config(COUNT_CYCLES, true);
 	if (input.length != 0) {

@@ -515,10 +515,10 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			task_idx = 0;
 			dpu_blocks = 0;
 		}
-
+		
 		// If we have reached the next tasks's boundary, log the offset
 		if (dpu_blocks == (input_blocks_per_task * task_idx)) {
-			input_block_offset[dpu_idx][task_idx] = dpu_blocks;
+			input_block_offset[dpu_idx][task_idx] = i;
 			output_offset[dpu_idx][task_idx] = ALIGN(snappy_max_compressed_length(block_size * dpu_blocks), 64);
 			task_idx++;
 		}
@@ -569,7 +569,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "header_buffer", 0, &header_buffer_start[dpu_idx], sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start[dpu_idx], sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + (input_blocks_per_dpu * block_size), ALIGN(input_length, 8), 0));
+		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + (input_block_offset[dpu_idx][0] * block_size), ALIGN(input_length, 8), 0));
 
 		dpu_idx++;
 	}
@@ -608,7 +608,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 				if ((i != (NR_TASKLETS - 1)) && input_block_offset[dpu_idx][i + 1] != 0)
 					header_tasklet_len = (input_block_offset[dpu_idx][i + 1] - input_block_offset[dpu_idx][i]) * sizeof(uint32_t);
 				else
-					header_tasklet_len = header_length[dpu_idx] - (input_block_offset[dpu_idx][i] * sizeof(uint32_t));
+					header_tasklet_len = header_length[dpu_idx] - ((input_block_offset[dpu_idx][i] - input_block_offset[dpu_idx][0]) * sizeof(uint32_t));
 
 				memcpy(output->curr, header_data + header_offset, header_tasklet_len);
 				header_offset += (header_tasklet_len << 1);
@@ -630,8 +630,9 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		
 		free(header_data);
 		
-		printf("------DPU 0 Logs------\n");
+		printf("------DPU %d Logs------\n", dpu_idx);
 		DPU_ASSERT(dpu_log_read(dpu, stdout));
+		dpu_idx++;
 	}
 
 	DPU_ASSERT(dpu_free(dpus));
