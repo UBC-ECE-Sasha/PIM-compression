@@ -11,13 +11,13 @@ Defines which files to parse for this graph, format is:
 	   'test file' : ('# dpus', '# tasklets')
 """
 files = {'terror2': ('1',   '4'), 
-        'plrabn12': ('2',   '8'), 
-		'world192': ('4',   '12'),
-		'xml'     : ('15',  '12'), 
-		'sao'     : ('21',  '12'),
-		'dickens' : ('35',  '12'),
-		'nci'     : ('64',  '18'), 
-		'mozilla' : ('105', '16'), 
+        'plrabn12': ('1',   '16'), 
+		'world192': ('3',   '16'),
+		'xml'     : ('11',  '16'), 
+		'sao'     : ('14',  '16'),
+		'dickens' : ('20',  '16'),
+		'nci'     : ('64',  '16'), 
+		'mozilla' : ('98', '16'), 
 		'spamfile': ('172', '16')}
 
 

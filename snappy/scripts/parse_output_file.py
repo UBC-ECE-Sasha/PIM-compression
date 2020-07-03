@@ -42,9 +42,9 @@ def get_host_runtime(path: pathlib.Path):
 		# Parse out the runtime
 		runtime = 0
 		for line in lines:
-			if "Host completed" in line:
+			if "Host time" in line:
 				line_split = line.split(' ')
-				runtime = float(line_split[-2])
+				runtime = float(line_split[-1])
 				break
 
 	return runtime
