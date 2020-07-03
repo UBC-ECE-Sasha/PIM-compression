@@ -84,8 +84,8 @@ def get_avg_max_cycles(path: pathlib.Path, testfile, num_dpus, num_tasks):
 	total_cycles = 0
 	num_files = 0
 	for filename in path.iterdir():
-		dpus = re.search(rf"dpus={num_dpus}", str(filename))
-		tasklets = re.search(rf"tasklets={num_tasks}", str(filename))
+		dpus = re.search(rf"dpus={num_dpus}[^0-9]", str(filename))
+		tasklets = re.search(rf"tasklets={num_tasks}[^0-9]", str(filename))
 		
 		if (testfile in str(filename)) and (dpus is not None) and (tasklets is not None):
 			total_cycles += get_max_cycles(filename)
@@ -95,3 +95,21 @@ def get_avg_max_cycles(path: pathlib.Path, testfile, num_dpus, num_tasks):
 		return (total_cycles / num_files)
 	else:
 		return -1
+
+def get_compr_ratio(path: pathlib.Path, testfile, num_dpus, num_tasks):
+	for filename in path.iterdir():
+		dpus = re.search(rf"dpus={num_dpus}[^0-9]", str(filename))
+		tasklets = re.search(rf"tasklets={num_tasks}[^0-9]", str(filename))
+
+		if (testfile in str(filename)) and (dpus is not None) and (tasklets is not None):
+			print(filename)	
+			with filename.open() as f:
+				# Read lines
+				lines = f.readlines()
+
+				# Parse out the compression ratio
+				for line in lines:
+					if "Compression ratio" in line:
+						line_split = line.split(' ')
+						return float(line_split[-1])
+	return -1
