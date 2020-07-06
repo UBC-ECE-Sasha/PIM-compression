@@ -31,6 +31,24 @@ static inline uint8_t READ_BYTE(struct in_buffer_context *_i)
 }
 
 /**
+ * Advance the sequential reader by some amount.
+ *
+ * @param input: holds input buffer information
+ * @param len: number of bytes to advance seqential reader by
+ */
+static inline void advance_seqread(struct in_buffer_context *input, uint32_t len)
+{
+	if (len == SEQREAD_CACHE_SIZE) {
+		input->ptr = seqread_get(input->ptr, 1, &input->sr);
+		input->ptr = seqread_get(input->ptr, SEQREAD_CACHE_SIZE - 1, &input->sr);
+	}
+	else 
+		input->ptr = seqread_get(input->ptr, len, &input->sr);
+
+	input->curr += len;
+}
+
+/**
  * Read a 1-byte offset tag and return the offset of the copy that is read.
  *
  * @param tag: tag byte to parse
@@ -115,17 +133,16 @@ static inline uint32_t read_long_literal_size(struct in_buffer_context *input, u
  */
 static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer_context *output, uint16_t len)
 {
+	uint32_t curr_index = output->curr - output->append_window;
 	while (len)
 	{
-		uint32_t curr_index = output->curr - output->append_window;
-
-		// if we are past the window, write the current window back to MRAM and start a new one
+		// If we are past the window, write the current window back to MRAM and start a new one
 		if (curr_index >= OUT_BUFFER_LENGTH)
 		{
 			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
 
-			// if we are writing back the current append buffer, but also dependent on the append buffer
+			// If we are writing back the current append buffer, but also dependent on the append buffer
 			// for the read window, we must keep a copy of the data for reading
 			dbg_printf("Read window: 0x%x Append window: 0x%x\n", output->read_window, output->append_window);
 			if (output->read_window == output->append_window)
@@ -134,9 +151,16 @@ static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer
 			output->append_window += OUT_BUFFER_LENGTH;
 			curr_index = 0;
 		}
-		output->append_ptr[curr_index] = READ_BYTE(input);
-		output->curr++;
-		len--;
+
+		uint32_t to_copy = MIN(OUT_BUFFER_LENGTH - curr_index, len);
+
+		memcpy(&output->append_ptr[curr_index], input->ptr, to_copy);
+		output->curr += to_copy;
+		len -= to_copy;
+		curr_index += to_copy;
+
+		// Advance sequential reader
+		advance_seqread(input, to_copy);
 	}
 }
 
@@ -179,7 +203,6 @@ static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_leng
 	uint32_t curr_index = output->curr - output->append_window;
 	while (copy_length)
 	{
-
 		// if we are past the append window, write the current window back to MRAM and start a new one
 		if (curr_index >= OUT_BUFFER_LENGTH)
 		{
@@ -215,10 +238,19 @@ static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_leng
 			}
 			read_index = 0;
 		}
+	
+		uint32_t to_copy = MIN(OUT_BUFFER_LENGTH - curr_index, copy_length);
+		to_copy = MIN(to_copy, OUT_BUFFER_LENGTH - read_index);
 		
+		memcpy(&output->append_ptr[curr_index], &src_ptr[read_index], to_copy);
+		output->curr += to_copy;
+		copy_length -= to_copy;
+		curr_index += to_copy;
+		read_index += to_copy; 
+/*
 		output->append_ptr[curr_index++] = src_ptr[read_index++];
 		output->curr++;
-		copy_length--;
+		copy_length--; */
 	}
 
 	// Update read window for next time this function is called	

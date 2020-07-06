@@ -17,6 +17,11 @@
 // out_buffer_context
 #define OUT_BUFFER_LENGTH 256
 
+// Sequential reader cache size must be the same as the
+// append window size, since we memcpy from one to the other
+#undef SEQREAD_CACHE_SIZE
+#define SEQREAD_CACHE_SIZE OUT_BUFFER_LENGTH
+
 // Return values
 typedef enum {
     SNAPPY_OK = 0,              // Success code
