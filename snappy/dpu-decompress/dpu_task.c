@@ -39,8 +39,7 @@ int main()
 	output.buffer = output_buffer + output_start;
 	output.append_ptr = (uint8_t*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
 	output.append_window = 0;
-	output.read_ptr = (uint8_t*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
-	output.read_window = -1;   
+	output.read_buf = (uint8_t*)ALIGN(mem_alloc(OUT_BUFFER_LENGTH), 8);
 	output.curr = 0;
 	output.length = 0;
 
