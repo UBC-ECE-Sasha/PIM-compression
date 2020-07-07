@@ -27,15 +27,31 @@ static inline int32_t log2_floor(uint32_t n)
 }
 
 /**
+ * Read the next input byte from the sequential reader.
+ *
+ * @param _i: holds input buffer information
+ * @return Byte that was read
+ */
+static inline uint8_t READ_BYTE(struct in_buffer_context *_i)
+{
+	uint8_t ret = *_i->ptr;
+	_i->ptr = seqread_get(_i->ptr, sizeof(uint8_t), &_i->sr);
+	return ret;
+}
+
+/**
  * Advance the sequential reader by some amount.
  *
  * @param input: holds input buffer information
  * @param len: number of bytes to advance seqential reader by
+ * @return New pointer in MRAM that seqread is reading from
  */
-static inline void advance_seqread(struct in_buffer_context *input, uint32_t len)
+static inline __mram_ptr uint8_t * advance_seqread(struct in_buffer_context *input, uint32_t len)
 {
 	__mram_ptr uint8_t *curr_ptr = seqread_tell(input->ptr, &input->sr);
 	input->ptr = seqread_seek(curr_ptr + len, &input->sr);
+
+	return (curr_ptr + len);
 }
 
 /**
@@ -47,14 +63,41 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
  */
 static inline uint32_t read_uint32(struct in_buffer_context *input, uint32_t offset)
 {
-	uint8_t data_read[16];
-	mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
+	if (input->curr == offset) {
+		return (READ_BYTE(input) |
+				(READ_BYTE(input) << 8) |
+				(READ_BYTE(input) << 16) |
+				(READ_BYTE(input) << 24));
+	}
+	else {
+		uint8_t data_read[16];
+		mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
+
+		offset %= 8;
+		return (data_read[offset] |
+				(data_read[offset + 1] << 8) |
+				(data_read[offset + 2] << 16) |
+				(data_read[offset + 3] << 24)); 
+	}
+}
+
+static inline void read_uint64(struct in_buffer_context *input, uint32_t offset, uint32_t data[]) 
+{
+	uint8_t data_read[24];
+	mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 24);
 
 	offset %= 8;
-	return (data_read[offset] |
-			(data_read[offset + 1] << 8) |
-			(data_read[offset + 2] << 16) |
-			(data_read[offset + 3] << 24)); 
+	
+	data[0] = (data_read[offset] |
+				(data_read[offset + 1] << 8) |
+				(data_read[offset + 2] << 16) |
+				(data_read[offset + 3] << 24)); 
+
+	offset += 4;
+	data[1] = (data_read[offset] |
+				(data_read[offset + 1] << 8) |
+				(data_read[offset + 2] << 16) |
+				(data_read[offset + 3] << 24)); 
 }
 
 /**
@@ -131,13 +174,12 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
  * either, as it gets called a lot.
  *
  * @param input: holds input buffer information
- * @param ptr: pointer to the value we want to hash
+ * @param bytes: bytes to hash
  * @param shift: adjusts hash to be within table size
  * @return Hash of four bytes stored at ptr
  */
-static inline uint32_t hash(struct in_buffer_context *input, uint32_t ptr, int shift)
+static inline uint32_t hash(struct in_buffer_context *input, uint32_t bytes, int shift)
 {
-	uint32_t bytes = read_uint32(input, ptr);
 	bytes += (bytes << 15);
 	bytes ^= (bytes >> 12);
 	bytes += (bytes << 2);
@@ -288,8 +330,12 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 	if (input_size >= input_margin_bytes) {
 		const uint32_t input_limit = input->curr + input_size - input_margin_bytes;
 		
-		uint32_t next_hash;
-		for (next_hash = hash(input, ++input->curr, shift);;) {
+		while (1) {
+			// Save the current place in the sequential reader
+			__mram_ptr uint8_t *curr_seqread = seqread_tell(input->ptr, &input->sr);
+			
+			uint32_t next_hash = hash(input, read_uint32(input, ++input->curr), shift);
+			
 			/*
 			 * The body of this loop calls EmitLiteral once and then EmitCopy one or
 			 * more times.	(The exception is that when we're close to exhausting
@@ -327,17 +373,22 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				next_input = input->curr + bytes_between_hash_lookups;
 
 				if (next_input > input_limit) {
-					if (next_emit < input_end)
+					if (next_emit < input_end) {
+						input->ptr = seqread_seek(curr_seqread, &input->sr);
 						emit_literal(input, output, input_end - next_emit);
+					}
 					
 					input->curr = input_end;
 					return (output->curr - output_start);
 				}		
 
-				next_hash = hash(input, next_input, shift);
+				next_hash = hash(input, read_uint32(input, next_input), shift);
 				candidate = base_input + table[hval];
 				table[hval] = input->curr - base_input;
 			} while (read_uint32(input, input->curr) != read_uint32(input, candidate));
+
+			// Restore the current place in sequential reader
+			input->ptr = seqread_seek(curr_seqread, &input->sr);
 			
 			/*
 			 * Step 2: A 4-byte match has been found.  We'll later see if more
@@ -357,6 +408,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 			 * this loop via goto if we get close to exhausting the input.
 			 */
 			uint32_t insert_tail;
+			uint32_t prev_curr_bytes[2];
 
 			do {
 				/*
@@ -366,7 +418,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				const uint32_t base = input->curr;
 				int32_t matched = 4 + find_match_length(input, candidate + 4, input->curr + 4, input_end);
 				input->curr += matched;
-				advance_seqread(input, matched);
+				curr_seqread = advance_seqread(input, matched);
 					
 				int32_t offset = base - candidate;
 				emit_copy(output, offset, matched);
@@ -375,7 +427,6 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				 * We could immediately start working at input->curr now, but to improve
 				 * compression we first update table[Hash(input->curr - 1, ...)]/
 				 */
-				insert_tail = input->curr - 1;
 				next_emit = input->curr;
 				if (input->curr >= input_limit) {
 					if (next_emit < input_end)
@@ -385,16 +436,19 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 					return (output->curr - output_start);
 				}
 
-				uint32_t prev_hash = hash(input, insert_tail, shift);
+				read_uint64(input, input->curr - 1, prev_curr_bytes);
+				uint32_t prev_hash = hash(input, prev_curr_bytes[0], shift);
 				table[prev_hash] = input->curr - base_input - 1;
 
-				uint32_t curr_hash = hash(input, insert_tail + 1, shift);
-				candidate = base_input + table[curr_hash];
+				uint32_t curr_hash = hash(input, prev_curr_bytes[1], shift);
 				table[curr_hash] = input->curr - base_input;
-			} while(read_uint32(input, insert_tail + 1) == read_uint32(input, candidate));
+				
+				candidate = base_input + table[curr_hash];
+			} while(prev_curr_bytes[1] == read_uint32(input, candidate));
 
-			next_hash = hash(input, insert_tail + 2, shift);
-			input->curr++;
+			// Restore the current place in sequential reader
+			input->ptr = seqread_seek(curr_seqread, &input->sr);
+			
 		}
 	}
 
