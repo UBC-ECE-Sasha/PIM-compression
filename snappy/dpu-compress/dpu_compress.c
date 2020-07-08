@@ -58,6 +58,33 @@ static inline uint32_t read_uint32(struct in_buffer_context *input, uint32_t off
 }
 
 /**
+ * Read two consecutive unsigned integers from input_buffer in MRAM, the
+ * first one starting at (offset), and the second one starting at (offset + 1)
+ * from start of the input buffer.
+ *
+ * @param input: holds input buffer information
+ * @param offset: offset from start of input_buffer to read from
+ * @param data: where to store the read bytes
+ */
+static inline void read_two_uint32(struct in_buffer_context *input, uint32_t offset, uint32_t data[2])
+{
+	uint8_t data_read[24];
+	mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 24);
+
+	offset %= 8;
+	
+	data[0] = (data_read[offset] |
+				(data_read[offset + 1] << 8) |
+				(data_read[offset + 2] << 16) |
+				(data_read[offset + 3] << 24)); 
+
+	data[1] = (data_read[offset + 1] |
+				(data_read[offset + 2] << 8) |
+				(data_read[offset + 3] << 16) |
+				(data_read[offset + 4] << 24)); 
+}
+
+/**
  * Write data to the output buffer. If append buffer becomes full, it is written
  * to MRAM and a new buffer is started.
  *
@@ -131,13 +158,12 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
  * either, as it gets called a lot.
  *
  * @param input: holds input buffer information
- * @param ptr: pointer to the value we want to hash
+ * @param bytes: bytes to hash
  * @param shift: adjusts hash to be within table size
  * @return Hash of four bytes stored at ptr
  */
-static inline uint32_t hash(struct in_buffer_context *input, uint32_t ptr, int shift)
+static inline uint32_t hash(struct in_buffer_context *input, uint32_t bytes, int shift)
 {
-	uint32_t bytes = read_uint32(input, ptr);
 	bytes += (bytes << 15);
 	bytes ^= (bytes >> 12);
 	bytes += (bytes << 2);
@@ -288,8 +314,8 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 	if (input_size >= input_margin_bytes) {
 		const uint32_t input_limit = input->curr + input_size - input_margin_bytes;
 		
-		uint32_t next_hash;
-		for (next_hash = hash(input, ++input->curr, shift);;) {
+		while (1) {
+			uint32_t next_hash = hash(input, read_uint32(input, ++input->curr), shift);
 			/*
 			 * The body of this loop calls EmitLiteral once and then EmitCopy one or
 			 * more times.	(The exception is that when we're close to exhausting
@@ -334,7 +360,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 					return (output->curr - output_start);
 				}		
 
-				next_hash = hash(input, next_input, shift);
+				next_hash = hash(input, read_uint32(input, next_input), shift);
 				candidate = base_input + table[hval];
 				table[hval] = input->curr - base_input;
 			} while (read_uint32(input, input->curr) != read_uint32(input, candidate));
@@ -356,8 +382,7 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 			 * by proceeding to the next iteration of the main loop.  We also can exit
 			 * this loop via goto if we get close to exhausting the input.
 			 */
-			uint32_t insert_tail;
-
+			uint32_t prev_curr_bytes[2];
 			do {
 				/*
 				 * We have a 4-byte match at input->curr, and no need to emit any
@@ -375,7 +400,6 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 				 * We could immediately start working at input->curr now, but to improve
 				 * compression we first update table[Hash(input->curr - 1, ...)]/
 				 */
-				insert_tail = input->curr - 1;
 				next_emit = input->curr;
 				if (input->curr >= input_limit) {
 					if (next_emit < input_end)
@@ -385,16 +409,15 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 					return (output->curr - output_start);
 				}
 
-				uint32_t prev_hash = hash(input, insert_tail, shift);
+				read_two_uint32(input, input->curr - 1, prev_curr_bytes);
+				
+				uint32_t prev_hash = hash(input, prev_curr_bytes[0], shift);
 				table[prev_hash] = input->curr - base_input - 1;
 
-				uint32_t curr_hash = hash(input, insert_tail + 1, shift);
+				uint32_t curr_hash = hash(input, prev_curr_bytes[1], shift);
 				candidate = base_input + table[curr_hash];
 				table[curr_hash] = input->curr - base_input;
-			} while(read_uint32(input, insert_tail + 1) == read_uint32(input, candidate));
-
-			next_hash = hash(input, insert_tail + 2, shift);
-			input->curr++;
+			} while(prev_curr_bytes[1] == read_uint32(input, candidate));
 		}
 	}
 
