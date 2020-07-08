@@ -17,6 +17,11 @@
 // out_buffer_context
 #define OUT_BUFFER_LENGTH 256
 
+// Sequential reader cache size must be the same as the
+// append window size, since we memcpy from one to the other
+#undef SEQREAD_CACHE_SIZE
+#define SEQREAD_CACHE_SIZE OUT_BUFFER_LENGTH
+
 // Return values
 typedef enum {
     SNAPPY_OK = 0,              // Success code
@@ -60,8 +65,7 @@ typedef struct out_buffer_context
 	__mram_ptr uint8_t *buffer; /* the entire output buffer in MRAM */
 	uint8_t *append_ptr; /* the append window in WRAM */
 	uint32_t append_window; /* offset of output buffer mapped by append window (must be multiple of window size) */
-	uint8_t *read_ptr; /* the read window in WRAM */
-	uint32_t read_window; /* offset of output buffer mapped by read window (must be multiple of window size) */
+	uint8_t *read_buf;
 	uint32_t curr; /* current offset in output buffer in MRAM */
 	uint32_t length; /* total size of output buffer in bytes */
 } out_buffer_context;
