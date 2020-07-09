@@ -569,7 +569,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "header_buffer", 0, &header_buffer_start[dpu_idx], sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start[dpu_idx], sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + (input_block_offset[dpu_idx][0] * block_size), ALIGN(input_length, 8), 0));
+		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + (input_block_offset[dpu_idx][0] * block_size), ALIGN(input_length, 8)));
 
 		dpu_idx++;
 	}
@@ -598,7 +598,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		// Get the entire header
 		uint32_t curr_header_length = ALIGN((header_length[dpu_idx] << 1), 8);
 		uint8_t *header_data = malloc(curr_header_length);
-		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, header_data, header_buffer_start[dpu_idx], curr_header_length, 0));
+		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, header_data, header_buffer_start[dpu_idx], curr_header_length));
 
 		uint32_t header_offset = 0;
 		for (uint8_t i = 0; i < NR_TASKLETS; i++) {
@@ -618,7 +618,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 				
 				// Read the data from the current tasklet
 				uint8_t *tasklet_data = malloc(ALIGN(output_length[i], 8));
-				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, tasklet_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8), 0));
+				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, tasklet_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8)));
 				
 				memcpy(compr_data, tasklet_data, output_length[i]);
 				free(tasklet_data);

@@ -365,7 +365,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8), 0));
+		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8)));
 
 		dpu_idx++;
 	}
@@ -391,7 +391,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 
 		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
-		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer + output_offset[dpu_idx][0], output_buffer_start, output_length, 0));
+		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer + output_offset[dpu_idx][0], output_buffer_start, output_length));
 
 		printf("------DPU %d Logs------\n", dpu_idx);
 		DPU_ASSERT(dpu_log_read(dpu, stdout));
