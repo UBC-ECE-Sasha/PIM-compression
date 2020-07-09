@@ -612,16 +612,12 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 
 				memcpy(output->curr, header_data + header_offset, header_tasklet_len);
 				header_offset += (header_tasklet_len << 1);
-				
+
 				output->curr += header_tasklet_len;
 				output->length += header_tasklet_len;
 				
 				// Read the data from the current tasklet
-				uint8_t *tasklet_data = malloc(ALIGN(output_length[i], 8));
-				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, tasklet_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8)));
-				
-				memcpy(compr_data, tasklet_data, output_length[i]);
-				free(tasklet_data);
+				DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, compr_data, output_buffer_start[dpu_idx] + output_offset[dpu_idx][i], ALIGN(output_length[i], 8)));
 				
 				output->length += output_length[i];
 				compr_data += output_length[i];
