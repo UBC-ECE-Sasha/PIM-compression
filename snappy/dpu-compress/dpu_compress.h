@@ -56,11 +56,10 @@ typedef struct out_buffer_context
  *
  * @param input: holds input buffer information
  * @param output: holds output buffer information
- * @param header_buffer: buffer holding compressed lengths of each block
  * @param block_size: size to compress at a time
  * @return SNAPPY_OK if successful, error code otherwise
  */
-snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, __mram_ptr uint32_t *header_buffer, uint32_t block_size);
+snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t block_size);
 
 #endif
 

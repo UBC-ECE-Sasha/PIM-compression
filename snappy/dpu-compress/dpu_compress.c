@@ -85,6 +85,29 @@ static inline void read_two_uint32(struct in_buffer_context *input, uint32_t off
 }
 
 /**
+ * Write the compressed length of a block to the output_offset. Must first read 8
+ * bytes at output_offset, add in the compressed length, and then write the buffer back.
+ *
+ * @param output: holds output buffer information
+ * @param output_offset: offset from start of output buffer to write to
+ * @param compressed_len: length value to write
+ */
+static void write_compressed_length(struct out_buffer_context *output, uint32_t output_offset, uint32_t compressed_len) 
+{
+	uint8_t data_read[8];
+	mram_read(&output->buffer[output_offset], data_read, 8);
+
+	// Fill in the compressed length
+	data_read[0] = compressed_len & 0xFF;
+	data_read[1] = (compressed_len >> 8) & 0xFF;
+	data_read[2] = (compressed_len >> 16) & 0xFF;
+	data_read[3] = (compressed_len >> 24) & 0xFF;
+
+	// Write the buffer back
+	mram_write(data_read, &output->buffer[output_offset], 8);
+}
+
+/**
  * Write data to the output buffer. If append buffer becomes full, it is written
  * to MRAM and a new buffer is started.
  *
@@ -295,14 +318,16 @@ static void emit_copy(struct out_buffer_context *output, uint32_t offset, uint32
  * @param input_size: size of the input to compress
  * @param table: pointer to allocated hash table
  * @param table_size: size of the hash table
- * @return Resulting compressed size
  */
-static uint32_t compress_block(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
+static void compress_block(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
-	uint32_t output_start = output->curr;
 	uint32_t base_input = input->curr;
 	uint32_t input_end = input->curr + input_size;
 	const int32_t shift = 32 - log2_floor(table_size);
+
+	// Make room for the compressed length
+	output->curr += 4;
+	uint32_t output_start = output->curr;
 
 	/*
 	 * Bytes in [next_emit, input->curr) will be emitted as literal bytes.
@@ -357,7 +382,8 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 						emit_literal(input, output, input_end - next_emit);
 					
 					input->curr = input_end;
-					return (output->curr - output_start);
+					write_compressed_length(output, output_start, output->curr - output_start);
+					return;
 				}		
 
 				next_hash = hash(input, read_uint32(input, next_input), shift);
@@ -406,7 +432,8 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 						emit_literal(input, output, input_end - next_emit);
 					
 					input->curr = input_end;
-					return (output->curr - output_start);
+					write_compressed_length(output, output_start, output->curr - output_start);
+					return;
 				}
 
 				read_two_uint32(input, input->curr - 1, prev_curr_bytes);
@@ -420,14 +447,11 @@ static uint32_t compress_block(struct in_buffer_context *input, struct out_buffe
 			} while(prev_curr_bytes[1] == read_uint32(input, candidate));
 		}
 	}
-
-	// We should never reach this point
-	return 0;
 }
 
 /************ Public Functions *************/
 
-snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, __mram_ptr uint32_t *header_buffer, uint32_t block_size)
+snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t block_size)
 {
 	// Calculate hash table size
 	uint32_t table_size = 1 << log2_floor(WRAM_PER_TASKLET);
@@ -436,33 +460,19 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 	// Allocate the hash table for compression
 	uint16_t *table = (uint16_t *)mem_alloc(table_size);
 	
-	bool idx = 0;
-	uint32_t compr_length[2];
 	uint32_t length_remain = input->length;
 	while (input->curr < input->length) {
 		// Get the next block size to compress
 		uint32_t to_compress = MIN(length_remain, block_size);
 
-		// Get the size of the hash table used for this block
+		// Reset the hash table
 		memset(table, 0, table_size);	
 	
 		// Compress the current block
-		uint32_t compressed_len = compress_block(input, output, to_compress, table, num_table_entries);
-		
-		// Write out the compressed length of this block
-		compr_length[idx] = compressed_len;
-		if (idx) {
-			mram_write(compr_length, header_buffer, 8);
-			header_buffer += 2;
-		}
-		
-		idx = !idx; 
+		compress_block(input, output, to_compress, table, num_table_entries);
+	
 		length_remain -= to_compress;
 	}
-	
-	// Write out the last compressed length
-	if (idx) 
-		mram_write(compr_length, header_buffer, 8);
 	
 	// Write out last buffer to MRAM
 	output->length = output->curr;

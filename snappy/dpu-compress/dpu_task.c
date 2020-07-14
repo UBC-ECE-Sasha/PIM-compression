@@ -12,7 +12,6 @@ __host uint32_t output_length[NR_TASKLETS];
 __host uint32_t input_block_offset[NR_TASKLETS];
 __host uint32_t output_offset[NR_TASKLETS];
 __host __mram_ptr uint8_t *input_buffer;
-__host __mram_ptr uint32_t *header_buffer;
 __host __mram_ptr uint8_t *output_buffer;
 
 int main()
@@ -64,13 +63,10 @@ int main()
 		input.length = input_length - input_start;
 	}
 	
-	// Calculate header buffer start
-	__mram_ptr uint32_t *header_buffer_start = header_buffer + ((input_block_offset[idx] - input_block_offset[0]) << 1);
-	
 	perfcounter_config(COUNT_CYCLES, true);
 	if (input.length != 0) {
 		// Do the uncompress
-		if (dpu_compress(&input, &output, header_buffer_start, block_size))
+		if (dpu_compress(&input, &output, block_size))
 		{
 			printf("Tasklet %d: failed in %ld cycles\n", idx, perfcounter_get());
 			return -1;
