@@ -16,18 +16,18 @@ The implementation in this repository is highly based off of the C port of Googl
 			...
 	<END FILE>
 	```
-  * __Altered Format:__ start of the compressed file is provided with more information to allow for determining where each compressed block is. This allows for a multi-threaded solution, because the compressed file can be broken up into independent pieces and parsed separately.
+  * __Altered Format:__ the compressed file is provided with more information to allow for determining where each compressed block is. This allows for a multi-threaded solution, because the compressed file can be broken up into independent pieces and parsed separately.
 	```
 	<START FILE>
 		<DECOMPRESSED LENGTH (varint)>
 		<DECOMPRESSED BLOCK SIZE (varint)>
-		<COMPRESSED LENGTHS>
-			<BLOCK 1 (int)>
-			<BLOCK 2 (int)>
-			...
 		<COMPRESSED DATA>
 			<BLOCK 1>
+				<BLOCK 1 SIZE (int)>
+				<BLOCK 1 DATA>
 			<BLOCK 2>
+				<BLOCK 2 SIZE (int)>
+				<BLOCK 2 DATA>
 			...
 	<END FILE>
 	```
