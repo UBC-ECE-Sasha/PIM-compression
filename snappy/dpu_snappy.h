@@ -10,7 +10,7 @@
 #define GET_LENGTH_2_BYTE(_tag) ((_tag >> 2) & BITMASK(6))
 
 // Max length of the input and output files
-#define MAX_FILE_LENGTH MEGABYTE(32)
+#define MAX_FILE_LENGTH MEGABYTE(30)
 
 // Return values
 typedef enum {

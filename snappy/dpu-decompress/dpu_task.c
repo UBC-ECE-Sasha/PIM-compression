@@ -5,13 +5,15 @@
 #include "alloc.h"
 #include "dpu_decompress.h"
 
-// MRAM variables
+// WRAM variables
 __host uint32_t input_length;
 __host uint32_t output_length;
 __host uint32_t input_offset[NR_TASKLETS];
 __host uint32_t output_offset[NR_TASKLETS];
-__host __mram_ptr uint8_t *input_buffer;
-__host __mram_ptr uint8_t *output_buffer;
+
+// MRAM buffers
+uint8_t __mram_noinit input_buffer[MEGABYTE(30)];
+uint8_t __mram_noinit output_buffer[MEGABYTE(30)];
 
 int main()
 {

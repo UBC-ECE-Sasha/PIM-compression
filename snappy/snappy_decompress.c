@@ -341,10 +341,12 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	input->curr = input_start; // Reset the pointer back to start for copying data to the DPU
 
 	struct dpu_set_t dpus;
+	struct dpu_set_t dpu_rank;
 	struct dpu_set_t dpu;
 
-	// Allocate a DPU
+	// Allocate the DPUs
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
+	DPU_ASSERT(dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL));
 
 	// Calculate input length without header and aligned output length
 	uint32_t total_input_length = input->length - (input->curr - input->buffer);
@@ -354,41 +356,42 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	uint32_t output_length;
 
 	dpu_idx = 0;
-	uint32_t input_buffer_start = 1024 * 1024;
-	uint32_t output_buffer_start;
-	DPU_FOREACH(dpus, dpu) {
-		// Add check to get rid of array out of bounds compiler warning
-		if (dpu_idx == NR_DPUS)
-			break;
+	DPU_RANK_FOREACH(dpus, dpu_rank) {
+		uint32_t largest_input_length = 0;
+		DPU_FOREACH(dpu_rank, dpu) {
+			// Check to get rid of array bounds compiler warning
+			if (dpu_idx == NR_DPUS)
+				break; 
 
-		// Calculate input and output lengths for each DPU
-		if ((dpu_idx != (NR_DPUS - 1)) && (input_offset[dpu_idx + 1][0] != 0)) {
-			input_length = input_offset[dpu_idx + 1][0] - input_offset[dpu_idx][0];
-			output_length = output_offset[dpu_idx + 1][0] - output_offset[dpu_idx][0];
+			// Calculate input and output lengths for each DPU
+			if ((dpu_idx != (NR_DPUS - 1)) && (input_offset[dpu_idx + 1][0] != 0)) {
+				input_length = input_offset[dpu_idx + 1][0] - input_offset[dpu_idx][0];
+				output_length = output_offset[dpu_idx + 1][0] - output_offset[dpu_idx][0];
+			}
+			else if ((dpu_idx == 0) || (input_offset[dpu_idx][0] != 0)) {
+				input_length = total_input_length - input_offset[dpu_idx][0];
+				output_length = aligned_output_length - output_offset[dpu_idx][0];
+			}
+			else {
+				input_length = 0;
+				output_length = 0;
+			}
+
+			if (largest_input_length < input_length)
+				largest_input_length = input_length;
+
+			// Set up and load the DPU program
+			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
+			DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
+			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
+			DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + input_offset[dpu_idx][0])));
+		
+			dpu_idx++;
 		}
-		else if ((dpu_idx == 0) || (input_offset[dpu_idx][0] != 0)) {
-			input_length = total_input_length - input_offset[dpu_idx][0];
-			output_length = aligned_output_length - output_offset[dpu_idx][0];
-		}
-		else {
-			input_length = 0;
-			output_length = 0;
-		}
 
-		// Calculate starting buffer positions in MRAM
-		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
-
-		// Set up and load the DPU program
-		DPU_ASSERT(dpu_load(dpu, DPU_DECOMPRESS_PROGRAM, NULL));
-		DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, &input_buffer_start, sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-		DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-		DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to(dpu, "output_buffer", 0, &output_buffer_start, sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, input_buffer_start, input->curr + input_offset[dpu_idx][0], ALIGN(input_length, 8)));
-
-		dpu_idx++;
+		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "input_buffer", 0, ALIGN(largest_input_length, 8), DPU_XFER_DEFAULT));
 	}
 
 	gettimeofday(&end, NULL);
@@ -406,18 +409,23 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 	// Deallocate the DPUs
 	dpu_idx = 0;
-	DPU_FOREACH(dpus, dpu) {
-		// Get the results back from the DPU
-		DPU_ASSERT(dpu_copy_from(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
-		DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+	DPU_RANK_FOREACH(dpus, dpu_rank) {
+		uint32_t largest_output_length = 0;
+		DPU_FOREACH(dpu_rank, dpu) {
+			// Get the results back from the DPU
+			DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+			if (largest_output_length < output_length)
+				largest_output_length = output_length;
 
-		output_buffer_start = ALIGN(input_buffer_start + input_length + 64, 64);
-		DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, output->buffer + output_offset[dpu_idx][0], output_buffer_start, output_length));
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
 
-		printf("------DPU %d Logs------\n", dpu_idx);
-		DPU_ASSERT(dpu_log_read(dpu, stdout));
+			printf("------DPU %d Logs------\n", dpu_idx);
+			DPU_ASSERT(dpu_log_read(dpu, stdout));
 
-		dpu_idx++;
+			dpu_idx++;
+		}
+
+		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 	}
 
 	DPU_ASSERT(dpu_free(dpus));
