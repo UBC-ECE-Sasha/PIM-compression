@@ -37,6 +37,23 @@ static inline bool read_varint32(struct host_buffer_context *input, uint32_t *va
 }
 
 /**
+ * Read an unsigned integer from the input buffer. Increments
+ * the current location in the input buffer.
+ *
+ * @param input: holds input buffer information
+ * @return Unsigned integer read
+ */
+static uint32_t read_uint32(struct host_buffer_context *input)
+{
+	uint32_t val = 0;
+	for (uint8_t i = 0; i < sizeof(uint32_t); i++) {
+		val |= (*input->curr++) << (8 * i);
+	}
+
+	return val;
+}
+		
+/**
  * Read the size of the long literal tag, which is used for literals with
  * length greater than 60 bytes.
  *
@@ -207,61 +224,64 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		return SNAPPY_INVALID_INPUT;
 	}
 
-	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
-	input->curr += num_blocks * sizeof(uint32_t);
-
 	while (input->curr < (input->buffer + input->length)) {
-		uint16_t length;
-		uint32_t offset;
-		const uint8_t tag = *input->curr++;
-		//printf("Got tag byte 0x%x at index 0x%lx\n", tag, input->curr - input->buffer - 1);
+		// Read the compressed block size
+		uint32_t compressed_size = read_uint32(input);	
+		uint8_t *block_end = input->curr + compressed_size;
+	
+		while (input->curr != block_end) {	
+			uint16_t length;
+			uint32_t offset;
+			const uint8_t tag = *input->curr++;
+			//printf("Got tag byte 0x%x at index 0x%lx\n", tag, input->curr - input->buffer - 1);
 
-		/* There are two types of elements in a Snappy stream: Literals and
-		copies (backreferences). Each element starts with a tag byte,
-		and the lower two bits of this tag byte signal what type of element
-		will follow. */
-		switch (GET_ELEMENT_TYPE(tag))
-		{
-		case EL_TYPE_LITERAL:
-			/* For literals up to and including 60 bytes in length, the upper
-			 * six bits of the tag byte contain (len-1). The literal follows
-			 * immediately thereafter in the bytestream.
-			 */
-			length = GET_LENGTH_2_BYTE(tag) + 1;
-			if (length > 60)
+			/* There are two types of elements in a Snappy stream: Literals and
+			copies (backreferences). Each element starts with a tag byte,
+			and the lower two bits of this tag byte signal what type of element
+			will follow. */
+			switch (GET_ELEMENT_TYPE(tag))
 			{
-				length = read_long_literal_size(input, length - 60) + 1;
+			case EL_TYPE_LITERAL:
+				/* For literals up to and including 60 bytes in length, the upper
+				 * six bits of the tag byte contain (len-1). The literal follows
+				 * immediately thereafter in the bytestream.
+				 */
+				length = GET_LENGTH_2_BYTE(tag) + 1;
+				if (length > 60)
+				{
+					length = read_long_literal_size(input, length - 60) + 1;
+				}
+
+				writer_append_host(input, output, length);
+				break;
+
+			/* Copies are references back into previous decompressed data, telling
+			 * the decompressor to reuse data it has previously decoded.
+			 * They encode two values: The _offset_, saying how many bytes back
+			 * from the current position to read, and the _length_, how many bytes
+			 * to copy.
+			 */
+			case EL_TYPE_COPY_1:
+				length = GET_LENGTH_1_BYTE(tag) + 4;
+				offset = make_offset_1_byte(tag, input);
+				if (!write_copy_host(output, length, offset))
+					return SNAPPY_INVALID_INPUT;
+				break;
+
+			case EL_TYPE_COPY_2:
+				length = GET_LENGTH_2_BYTE(tag) + 1;
+				offset = make_offset_2_byte(tag, input);
+				if (!write_copy_host(output, length, offset))
+					return SNAPPY_INVALID_INPUT;
+				break;
+
+			case EL_TYPE_COPY_4:
+				length = GET_LENGTH_2_BYTE(tag) + 1;
+				offset = make_offset_4_byte(tag, input);
+				if (!write_copy_host(output, length, offset))
+					return SNAPPY_INVALID_INPUT;
+				break;
 			}
-
-			writer_append_host(input, output, length);
-			break;
-
-		/* Copies are references back into previous decompressed data, telling
-		 * the decompressor to reuse data it has previously decoded.
-		 * They encode two values: The _offset_, saying how many bytes back
-		 * from the current position to read, and the _length_, how many bytes
-		 * to copy.
-		 */
-		case EL_TYPE_COPY_1:
-			length = GET_LENGTH_1_BYTE(tag) + 4;
-			offset = make_offset_1_byte(tag, input);
-			if (!write_copy_host(output, length, offset))
-				return SNAPPY_INVALID_INPUT;
-			break;
-
-		case EL_TYPE_COPY_2:
-			length = GET_LENGTH_2_BYTE(tag) + 1;
-			offset = make_offset_2_byte(tag, input);
-			if (!write_copy_host(output, length, offset))
-				return SNAPPY_INVALID_INPUT;
-			break;
-
-		case EL_TYPE_COPY_4:
-			length = GET_LENGTH_2_BYTE(tag) + 1;
-			offset = make_offset_4_byte(tag, input);
-			if (!write_copy_host(output, length, offset))
-				return SNAPPY_INVALID_INPUT;
-			break;
 		}
 	}
 
@@ -281,6 +301,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		fprintf(stderr, "Failed to read decompressed block size\n");
 		return SNAPPY_INVALID_INPUT;
 	}
+	uint8_t *input_start = input->curr;
 
 	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
@@ -311,13 +332,13 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		}
 
 		// Read the compressed block size
-		total_offset += (*input->curr & 0xFF) |
-				((*(input->curr + 1) & 0xFF) << 8) |
-				((*(input->curr + 2) & 0xFF) << 16) |
-				((*(input->curr + 3) & 0xFF) << 24);
+		uint32_t compressed_size = read_uint32(input);
+		input->curr += compressed_size;
+		
+		total_offset += compressed_size + sizeof(uint32_t);	
 		task_blocks++;
-		input->curr += sizeof(uint32_t);
 	}
+	input->curr = input_start; // Reset the pointer back to start for copying data to the DPU
 
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu;

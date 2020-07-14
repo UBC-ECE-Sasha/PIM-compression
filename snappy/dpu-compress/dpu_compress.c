@@ -89,22 +89,25 @@ static inline void read_two_uint32(struct in_buffer_context *input, uint32_t off
  * bytes at output_offset, add in the compressed length, and then write the buffer back.
  *
  * @param output: holds output buffer information
- * @param output_offset: offset from start of output buffer to write to
+ * @param offset: offset from start of output buffer to write to
  * @param compressed_len: length value to write
  */
-static void write_compressed_length(struct out_buffer_context *output, uint32_t output_offset, uint32_t compressed_len) 
+static void write_compressed_length(struct out_buffer_context *output, uint32_t offset, uint32_t compressed_len) 
 {
-	uint8_t data_read[8];
-	mram_read(&output->buffer[output_offset], data_read, 8);
+	uint8_t data_read[16];
+	uint32_t aligned_offset = WINDOW_ALIGN(offset, 8);
+	mram_read(&output->buffer[aligned_offset], data_read, 16);
+
+	offset %= 8;
 
 	// Fill in the compressed length
-	data_read[0] = compressed_len & 0xFF;
-	data_read[1] = (compressed_len >> 8) & 0xFF;
-	data_read[2] = (compressed_len >> 16) & 0xFF;
-	data_read[3] = (compressed_len >> 24) & 0xFF;
-
+	data_read[offset] = compressed_len & 0xFF;
+	data_read[offset + 1] = (compressed_len >> 8) & 0xFF;
+	data_read[offset + 2] = (compressed_len >> 16) & 0xFF;
+	data_read[offset + 3] = (compressed_len >> 24) & 0xFF;
+	
 	// Write the buffer back
-	mram_write(data_read, &output->buffer[output_offset], 8);
+	mram_write(data_read, &output->buffer[aligned_offset], 16);
 }
 
 /**
@@ -382,7 +385,7 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 						emit_literal(input, output, input_end - next_emit);
 					
 					input->curr = input_end;
-					write_compressed_length(output, output_start, output->curr - output_start);
+					write_compressed_length(output, output_start - 4, output->curr - output_start);
 					return;
 				}		
 
@@ -432,7 +435,7 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 						emit_literal(input, output, input_end - next_emit);
 					
 					input->curr = input_end;
-					write_compressed_length(output, output_start, output->curr - output_start);
+					write_compressed_length(output, output_start - 4, output->curr - output_start);
 					return;
 				}
 
