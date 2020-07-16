@@ -36,6 +36,7 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
 {
 	__mram_ptr uint8_t *curr_ptr = seqread_tell(input->ptr, &input->sr);
 	input->ptr = seqread_seek(curr_ptr + len, &input->sr);
+	input->curr += len;
 }
 
 /**
@@ -47,14 +48,27 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
  */
 static inline uint32_t read_uint32(struct in_buffer_context *input, uint32_t offset)
 {
-	uint8_t data_read[16];
-	mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
+	if (offset < (input->curr + SEQREAD_CACHE_SIZE - 4)) {
+		offset %= SEQREAD_CACHE_SIZE;
+		uint32_t ret = (input->ptr[offset] |
+				(input->ptr[offset + 1] << 8) |
+				(input->ptr[offset + 2] << 16) |
+				(input->ptr[offset + 3] << 24));
+		printf("%d\n", ret);
+		return ret;
+	}
+	else {
+		uint8_t data_read[16];
+		mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
 
-	offset %= 8;
-	return (data_read[offset] |
-			(data_read[offset + 1] << 8) |
-			(data_read[offset + 2] << 16) |
-			(data_read[offset + 3] << 24)); 
+		offset %= 8;
+		uint32_t ret = (data_read[offset] |
+				(data_read[offset + 1] << 8) |
+				(data_read[offset + 2] << 16) |
+				(data_read[offset + 3] << 24)); 
+		printf("%d\n", ret);
+		return ret;
+	}
 }
 
 /**
@@ -190,6 +204,8 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
  */
 static inline uint32_t hash(struct in_buffer_context *input, uint32_t bytes, int shift)
 {
+	UNUSED(input);
+
 	bytes += (bytes << 15);
 	bytes ^= (bytes >> 12);
 	bytes += (bytes << 2);
@@ -325,6 +341,7 @@ static void emit_copy(struct out_buffer_context *output, uint32_t offset, uint32
 static void compress_block(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
 	uint32_t base_input = input->curr;
+	uint32_t curr_input = input->curr;
 	uint32_t input_end = input->curr + input_size;
 	const int32_t shift = 32 - log2_floor(table_size);
 
@@ -336,14 +353,14 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 	 * Bytes in [next_emit, input->curr) will be emitted as literal bytes.
 	 * Or [next_emit, input_end) after the main loop.
 	 */
-	uint32_t next_emit = input->curr;
+	uint32_t next_emit = curr_input;
 	const uint32_t input_margin_bytes = 15;
 
 	if (input_size >= input_margin_bytes) {
-		const uint32_t input_limit = input->curr + input_size - input_margin_bytes;
+		const uint32_t input_limit = curr_input + input_size - input_margin_bytes;
 		
 		while (1) {
-			uint32_t next_hash = hash(input, read_uint32(input, ++input->curr), shift);
+			uint32_t next_hash = hash(input, read_uint32(input, ++curr_input), shift);
 			/*
 			 * The body of this loop calls EmitLiteral once and then EmitCopy one or
 			 * more times.	(The exception is that when we're close to exhausting
@@ -372,34 +389,33 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 			 * number of bytes to move ahead for each iteration.
 			 */
 			uint32_t skip_bytes = 32;
-			uint32_t next_input = input->curr;
+			uint32_t next_input = curr_input;
 			uint32_t candidate;
 			do {
-				input->curr = next_input;
+				curr_input = next_input;
 				uint32_t hval = next_hash;
 				uint32_t bytes_between_hash_lookups = skip_bytes++ >> 5;
-				next_input = input->curr + bytes_between_hash_lookups;
+				next_input = curr_input + bytes_between_hash_lookups;
 
 				if (next_input > input_limit) {
 					if (next_emit < input_end)
 						emit_literal(input, output, input_end - next_emit);
 					
-					input->curr = input_end;
 					write_compressed_length(output, output_start - 4, output->curr - output_start);
 					return;
 				}		
 
 				next_hash = hash(input, read_uint32(input, next_input), shift);
 				candidate = base_input + table[hval];
-				table[hval] = input->curr - base_input;
-			} while (read_uint32(input, input->curr) != read_uint32(input, candidate));
+				table[hval] = curr_input - base_input;
+			} while (read_uint32(input, curr_input) != read_uint32(input, candidate));
 			
 			/*
 			 * Step 2: A 4-byte match has been found.  We'll later see if more
 			 * than 4 bytes match.	But, prior to the match, input bytes
 			 * [next_emit, input->curr) are unmatched.	Emit them as "literal bytes."
 			 */
-			emit_literal(input, output, input->curr - next_emit);
+			emit_literal(input, output, curr_input - next_emit);
 
 			/*
 			 * Step 3: Call EmitCopy, and then see if another EmitCopy could
@@ -417,9 +433,9 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 				 * We have a 4-byte match at input->curr, and no need to emit any
 				 *	"literal bytes" prior to input->curr.
 				 */
-				const uint32_t base = input->curr;
-				int32_t matched = 4 + find_match_length(input, candidate + 4, input->curr + 4, input_end);
-				input->curr += matched;
+				const uint32_t base = curr_input;
+				int32_t matched = 4 + find_match_length(input, candidate + 4, curr_input + 4, input_end);
+				curr_input += matched;
 				advance_seqread(input, matched);
 					
 				int32_t offset = base - candidate;
@@ -429,24 +445,23 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 				 * We could immediately start working at input->curr now, but to improve
 				 * compression we first update table[Hash(input->curr - 1, ...)]/
 				 */
-				next_emit = input->curr;
-				if (input->curr >= input_limit) {
+				next_emit = curr_input;
+				if (curr_input >= input_limit) {
 					if (next_emit < input_end)
 						emit_literal(input, output, input_end - next_emit);
 					
-					input->curr = input_end;
 					write_compressed_length(output, output_start - 4, output->curr - output_start);
 					return;
 				}
 
-				read_two_uint32(input, input->curr - 1, prev_curr_bytes);
+				read_two_uint32(input, curr_input - 1, prev_curr_bytes);
 				
 				uint32_t prev_hash = hash(input, prev_curr_bytes[0], shift);
-				table[prev_hash] = input->curr - base_input - 1;
+				table[prev_hash] = curr_input - base_input - 1;
 
 				uint32_t curr_hash = hash(input, prev_curr_bytes[1], shift);
 				candidate = base_input + table[curr_hash];
-				table[curr_hash] = input->curr - base_input;
+				table[curr_hash] = curr_input - base_input;
 			} while(prev_curr_bytes[1] == read_uint32(input, candidate));
 		}
 	}
