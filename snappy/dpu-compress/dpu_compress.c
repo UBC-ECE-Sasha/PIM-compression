@@ -122,6 +122,15 @@ static void write_output_buffer(struct out_buffer_context *output, uint8_t *arr,
 {
 	uint32_t curr_index = output->curr - output->append_window;
 	while (len) {
+		// If we are past the append window, write out current window to MRAM and start a new one
+		if (curr_index >= OUT_BUFFER_LENGTH) {
+			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
+
+			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index -= OUT_BUFFER_LENGTH;
+		}
+
 		uint32_t to_write = MIN(OUT_BUFFER_LENGTH - curr_index, len);
 		memcpy(&output->append_ptr[curr_index], arr, to_write);
 
@@ -129,15 +138,6 @@ static void write_output_buffer(struct out_buffer_context *output, uint8_t *arr,
 		curr_index += to_write;
 		output->curr += to_write;
 		arr += to_write;
-
-		// If we are past the append window, write out current window to MRAM and start a new one
-		if (curr_index >= OUT_BUFFER_LENGTH) {
-			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
-
-			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-			output->append_window += OUT_BUFFER_LENGTH;
-			curr_index = 0;
-		}
 	}
 }
 
@@ -153,6 +153,15 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 {
 	uint32_t curr_index = output->curr - output->append_window;
 	while (len) {
+		// If we are past the append window, write out current window to MRAM and start a new one
+		if (curr_index >= OUT_BUFFER_LENGTH) {
+			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
+
+			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
+			output->append_window += OUT_BUFFER_LENGTH;
+			curr_index -= OUT_BUFFER_LENGTH;
+		}
+
 		uint32_t to_copy = MIN(OUT_BUFFER_LENGTH - curr_index, len);
 		memcpy(&output->append_ptr[curr_index], input->ptr, to_copy);
 
@@ -162,15 +171,6 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
 		len -= to_copy;
 		curr_index += to_copy;
 		output->curr += to_copy;
-
-		// If we are past the append window, write out current window to MRAM and start a new one
-		if (curr_index >= OUT_BUFFER_LENGTH) {
-			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
-
-			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-			output->append_window += OUT_BUFFER_LENGTH;
-			curr_index = 0;
-		}
 	}
 }
 
