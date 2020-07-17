@@ -550,18 +550,25 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 
 			if (largest_input_length < input_length)
 				largest_input_length = input_length;
-		
+			
 			// Set up and load the DPU program
 			DPU_ASSERT(dpu_copy_to(dpu, "block_size", 0, &block_size, sizeof(uint32_t)));
 			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
 			DPU_ASSERT(dpu_copy_to(dpu, "input_block_offset", 0, input_block_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-			
+		
+			// If all prepared transfers have a larger transfer length, push them first
+			// and then set up the next transfer
+			if (input_length < largest_input_length) {
+				DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "input_buffer", 0, ALIGN(largest_input_length, 8), DPU_XFER_DEFAULT));
+				largest_input_length = input_length;
+			}
+
 			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + (input_block_offset[dpu_idx][0] * block_size))));	
 	
 			dpu_idx++;
 		}
-
+		
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "input_buffer", 0, ALIGN(largest_input_length, 8), DPU_XFER_DEFAULT));
 	}
 
