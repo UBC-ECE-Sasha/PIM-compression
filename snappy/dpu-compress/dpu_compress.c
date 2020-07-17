@@ -48,26 +48,22 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
  */
 static inline uint32_t read_uint32(struct in_buffer_context *input, uint32_t offset)
 {
-	if (offset < (input->curr + SEQREAD_CACHE_SIZE - 4)) {
-		offset %= SEQREAD_CACHE_SIZE;
-		uint32_t ret = (input->ptr[offset] |
+	if ((offset > input->curr) && (offset < (input->curr + SEQREAD_CACHE_SIZE - 4))) {
+		offset -= input->curr;
+		return (input->ptr[offset] |
 				(input->ptr[offset + 1] << 8) |
 				(input->ptr[offset + 2] << 16) |
 				(input->ptr[offset + 3] << 24));
-		printf("%d\n", ret);
-		return ret;
 	}
 	else {
 		uint8_t data_read[16];
 		mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
 
 		offset %= 8;
-		uint32_t ret = (data_read[offset] |
+		return (data_read[offset] |
 				(data_read[offset + 1] << 8) |
 				(data_read[offset + 2] << 16) |
 				(data_read[offset + 3] << 24)); 
-		printf("%d\n", ret);
-		return ret;
 	}
 }
 
@@ -437,7 +433,7 @@ static void compress_block(struct in_buffer_context *input, struct out_buffer_co
 				int32_t matched = 4 + find_match_length(input, candidate + 4, curr_input + 4, input_end);
 				curr_input += matched;
 				advance_seqread(input, matched);
-					
+				
 				int32_t offset = base - candidate;
 				emit_copy(output, offset, matched);
 			
