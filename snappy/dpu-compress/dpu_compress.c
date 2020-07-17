@@ -48,7 +48,8 @@ static inline void advance_seqread(struct in_buffer_context *input, uint32_t len
  */
 static inline uint32_t read_uint32(struct in_buffer_context *input, uint32_t offset)
 {
-	if ((offset > input->curr) && (offset < (input->curr + SEQREAD_CACHE_SIZE - 4))) {
+	// Use the value from the sequential read cache if it's there
+	if ((offset - input->curr) < (SEQREAD_CACHE_SIZE - 4)) {
 		offset -= input->curr;
 		return (input->ptr[offset] |
 				(input->ptr[offset + 1] << 8) |
