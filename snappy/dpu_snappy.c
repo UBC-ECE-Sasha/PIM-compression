@@ -152,12 +152,14 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 		return -1;
 	}
+	input.file_name = input_file;
 	printf("Using input file %s\n", input_file);
 
 	// If no output file was provided, use a default file
 	if (output_file == NULL) {
 		output_file = "output.txt";
 	}
+	output.file_name = output_file;
 	printf("Using output file %s\n", output_file);
 
 	// Read the input file into main memory
@@ -211,7 +213,9 @@ int main(int argc, char **argv)
 	if (status == SNAPPY_OK)
 	{
 		// Write the output buffer from main memory to a file
-		write_output_host(output_file, &output);
+		if (!(compress && use_dpu))
+			write_output_host(output_file, &output);
+
 		if (compress) {
 			printf("Compressed %u bytes to: %s\n", output.length, output_file);
 			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);

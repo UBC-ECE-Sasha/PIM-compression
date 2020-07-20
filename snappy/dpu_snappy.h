@@ -31,6 +31,7 @@ enum element_type
 // Buffer context struct for input and output buffers on host
 typedef struct host_buffer_context
 {
+	const char *file_name;		// File name
 	uint8_t *buffer;		// Entire buffer
 	uint8_t *curr;			// Pointer to current location in buffer
 	uint32_t length;		// Length of buffer
