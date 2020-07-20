@@ -586,16 +586,17 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	// Open the output file and write the header
 	FILE *fout = fopen(output->file_name, "w");
 	fwrite(output->buffer, sizeof(uint8_t), output->length, fout);
-
+	
 	gettimeofday(&start, NULL);
 
 	// Deallocate the DPUs
+	uint32_t max_output_length = snappy_max_compressed_length(input_blocks_per_dpu * block_size);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
 		// Get number of DPUs in this rank
 		uint32_t nr_dpus;
 		DPU_ASSERT(dpu_get_nr_dpus(dpu_rank, &nr_dpus));
-
+		
 		uint8_t *dpu_bufs[NR_DPUS] = {NULL};
 
 		uint32_t largest_output_length = 0;
@@ -615,15 +616,15 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 				largest_output_length = dpu_output_length;
 
 			// Prepare the transfer
-			dpu_bufs[dpu_idx] = malloc(ALIGN(largest_output_length, 8));
+			dpu_bufs[dpu_idx] = malloc(max_output_length);
 			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)dpu_bufs[dpu_idx]));
 
 			printf("------DPU %d Logs------\n", dpu_idx);
 			DPU_ASSERT(dpu_log_read(dpu, stdout));
 			dpu_idx++;
 		}
-
-		DPU_ASSERT(dpu_push_xfer(dpu, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
+		
+		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 
 		for (uint32_t d = nr_dpus; d > 0; d--) {
 			uint32_t curr_dpu_idx = dpu_idx - d;
