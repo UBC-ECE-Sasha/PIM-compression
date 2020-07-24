@@ -4,21 +4,21 @@ import pathlib
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from parse_output_file import get_avg_max_cycles, get_avg_host_runtime 
+from parse_output_file import get_avg_max_cycles, get_avg_host_runtime, get_avg_prepostproc_time
 
 """
 Defines which files to parse for this graph, format is:
 	   'test file' : ('# dpus', '# tasklets')
 """
 files = {'terror2': ('1',   '4'), 
-        'plrabn12': ('1',   '16'), 
-		'world192': ('3',   '16'),
-		'xml'     : ('11',  '16'), 
-		'sao'     : ('14',  '16'),
-		'dickens' : ('20',  '16'),
-		'nci'     : ('64',  '16'), 
-		'mozilla' : ('98', '16'), 
-		'spamfile': ('172', '16')}
+        'plrabn12': ('1',   '15'), 
+		'world192': ('3',   '12'),
+		'xml'     : ('14',  '12'), 
+		'sao'     : ('19',  '12'),
+		'dickens' : ('26',  '12'),
+		'nci'     : ('86',  '12'), 
+		'mozilla' : ('131',  '12'), 
+		'spamfile': ('230', '12')}
 
 
 def setup_graph(path: pathlib.Path):
@@ -28,36 +28,35 @@ def setup_graph(path: pathlib.Path):
 	:param path: Path holding output files
 	"""
 	# Loop through directory for respective output files and parse them
-	cycles = []
+	dpu_time = []
 	host_time = []
 	for filename in files:
 		params = files[filename]
 
 		ahr = get_avg_host_runtime(path, filename)
-		amc = get_avg_max_cycles(path, filename, params[0], params[1])
+		adr = get_avg_max_cycles(path, filename, params[0], params[1])
 
 		if ahr is -1:
 			print(f"ERROR: File not found fo host: {filename}.", file=sys.stderr)
 			return
-		elif amc is -1:
+		elif adr is -1:
 			print(f"ERROR: File not found for DPU: {filename} with {params[0]} dpus and {params[1]} tasklets.", file=sys.stderr)
 			return
 		else:
 			host_time.append(ahr)
-			cycles.append(amc)
+			dpu_time.append(float(adr) / 267000000 + get_avg_prepostproc_time(path, filename, params[0], params[1]))
 
 	# Calculate the speedup
 	speedup = []
 	for i in range (0, len(files)):
-		dpu_time = float(cycles[i]) / 267000000 # DPU clock speed is 267MHz
-
-		if host_time[i] < dpu_time:
-			speedup.append((host_time[i] / dpu_time - 1) * 100)
+		if host_time[i] < dpu_time[i]:
+			speedup.append((host_time[i] / dpu_time[i] - 1) * 100)
 		else:
-			speedup.append((host_time[i] / dpu_time) * 100)
+			speedup.append((host_time[i] / dpu_time[i]) * 100)
 
 	# Print for easy debugging
-	print(files)
+	print(host_time)
+	print(dpu_time)
 	print(speedup)
 
 	# Set up plot
