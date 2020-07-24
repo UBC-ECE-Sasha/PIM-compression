@@ -421,17 +421,19 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_FOREACH(dpu_rank, dpu) {
 			// Get the results back from the DPU
 			DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
-			if (largest_output_length < output_length)
-				largest_output_length = output_length;
+			if (output_length != 0) {	
+				if (largest_output_length < output_length)
+					largest_output_length = output_length;
 
-			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
+				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
+			}
 
 			printf("------DPU %d Logs------\n", dpu_idx);
 			DPU_ASSERT(dpu_log_read(dpu, stdout));
 
 			dpu_idx++;
 		}
-
+		
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 	}
 
@@ -439,6 +441,6 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 	gettimeofday(&end, NULL);
 	*postproc_time += get_runtime(&start, &end);
-
+	
 	return SNAPPY_OK;
 }	
