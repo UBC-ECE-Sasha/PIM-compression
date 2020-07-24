@@ -29,9 +29,6 @@ int main()
 		return 0;
 	}
 
-	// Reset heap pointer
-	mem_reset();
-
 	// Prepare the input and output descriptors
 	uint32_t input_start = input_offset[idx] - input_offset[0];
 	uint32_t output_start = output_offset[idx] - output_offset[0];
