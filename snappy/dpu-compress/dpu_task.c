@@ -22,6 +22,10 @@ int main()
 	struct out_buffer_context output;
 	uint8_t idx = me();
 
+	// Clear the heap
+	if (idx == 0)
+		mem_reset();
+
 	printf("DPU starting, tasklet %d\n", idx);
 	
 	// Check that this tasklet has work to run
