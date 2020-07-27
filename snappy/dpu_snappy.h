@@ -4,6 +4,8 @@
 #include "common.h"
 #include <sys/time.h>
 
+#define BULK_XFER
+
 #define GET_ELEMENT_TYPE(_tag)  (_tag & BITMASK(2))
 #define GET_LENGTH_1_BYTE(_tag) ((_tag >> 2) & BITMASK(3))
 #define GET_OFFSET_1_BYTE(_tag) ((_tag >> 5) & BITMASK(3))

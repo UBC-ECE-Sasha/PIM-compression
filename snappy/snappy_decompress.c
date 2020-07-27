@@ -359,6 +359,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
 #ifdef BULK_XFER
 		uint32_t largest_input_length = 0;
+		uint32_t starting_dpu_idx = dpu_idx;
 #endif
 		DPU_FOREACH(dpu_rank, dpu) {
 			// Check to get rid of array bounds compiler warning
@@ -379,14 +380,11 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 				output_length = 0;
 			}
 
-			// Set up and load the DPU program
 			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
-			DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 
 #ifdef BULK_XFER
-		if (largest_input_length < input_length)
+			if (largest_input_length < input_length)
 				largest_input_length = input_length;
 
 			// If all prepared transfers have a larger transfer length by some margin then we have reached 
@@ -398,6 +396,8 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + input_offset[dpu_idx][0])));
 #else
+			DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
+			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, input->curr + input_offset[dpu_idx][0], ALIGN(input_length,8)));
 #endif
 			dpu_idx++;
@@ -405,6 +405,20 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 #ifdef BULK_XFER
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "input_buffer", 0, ALIGN(largest_input_length, 8), DPU_XFER_DEFAULT));
+
+		dpu_idx = starting_dpu_idx;
+		DPU_FOREACH(dpu_rank, dpu) {
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)input_offset[dpu_idx]));
+			dpu_idx++;
+		}
+		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "input_offset", 0, sizeof(uint32_t) * NR_TASKLETS, DPU_XFER_DEFAULT));
+
+		dpu_idx = starting_dpu_idx;
+		DPU_FOREACH(dpu_rank, dpu) {
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)output_offset[dpu_idx]));
+			dpu_idx++;
+		}
+		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "output_offset", 0, sizeof(uint32_t) * NR_TASKLETS, DPU_XFER_DEFAULT));
 #endif
 	}
 
