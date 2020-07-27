@@ -357,7 +357,9 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
+#ifdef BULK_XFER
 		uint32_t largest_input_length = 0;
+#endif
 		DPU_FOREACH(dpu_rank, dpu) {
 			// Check to get rid of array bounds compiler warning
 			if (dpu_idx == NR_DPUS)
@@ -377,14 +379,15 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 				output_length = 0;
 			}
 
-			if (largest_input_length < input_length)
-				largest_input_length = input_length;
-			
 			// Set up and load the DPU program
 			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
 			DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
+
+#ifdef BULK_XFER
+		if (largest_input_length < input_length)
+				largest_input_length = input_length;
 
 			// If all prepared transfers have a larger transfer length by some margin then we have reached 
 			// the last DPU. Push existing transfers first to prevent segfault of copying too much data
@@ -394,11 +397,15 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 			}
 
 			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + input_offset[dpu_idx][0])));
-		
+#else
+			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, input->curr + input_offset[dpu_idx][0], ALIGN(input_length,8)));
+#endif
 			dpu_idx++;
 		}
 
+#ifdef BULK_XFER
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_TO_DPU, "input_buffer", 0, ALIGN(largest_input_length, 8), DPU_XFER_DEFAULT));
+#endif
 	}
 
 	gettimeofday(&end, NULL);
@@ -417,15 +424,21 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	// Deallocate the DPUs
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
+#ifdef BULK_XFER
 		uint32_t largest_output_length = 0;
+#endif
 		DPU_FOREACH(dpu_rank, dpu) {
 			// Get the results back from the DPU
 			DPU_ASSERT(dpu_copy_from(dpu, "output_length", 0, &output_length, sizeof(uint32_t)));
 			if (output_length != 0) {	
+#ifdef BULK_XFER
 				if (largest_output_length < output_length)
 					largest_output_length = output_length;
 
 				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
+#else
+			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, output->buffer + output_offset[dpu_idx][0], ALIGN(output_length, 8)));
+#endif		
 			}
 
 			printf("------DPU %d Logs------\n", dpu_idx);
@@ -433,8 +446,9 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 			dpu_idx++;
 		}
-		
+#ifdef BULK_XFER	
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
+#endif
 	}
 
 	DPU_ASSERT(dpu_free(dpus));
