@@ -11,9 +11,9 @@
  *
  * @param input: holds input buffer information
  * @param output: holds output buffer information
- * @param preproc_time: time it takes to setup compression, added to existing value
+ * @param runtime: struct holding break down of runtimes for different parts of the program
  */
-void setup_compression(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time);
+void setup_compression(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime);
 
 /**
  * Perform the Snappy compression on the host.
@@ -31,11 +31,10 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
  * @param input: holds input buffer information
  * @param output: holds output buffer information
  * @param block_size: size to compress at a time
- * @param preproc_time: time it takes to set up compression and load the DPU, added to existing value
- * @param postproc_time: time it takes to grab outptu data from DPU, added to existing value
+ * @param runtime: struct holding break down of runtimes for different parts of the program
  * @return SNAPPY_OK if successful, error code otherwise
  */
-snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size, double *preproc_time, double *postproc_time);
+snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size, struct program_runtime *runtime);
 
 
 #endif /* _SNAPPY_COMPRESSION_H_ */

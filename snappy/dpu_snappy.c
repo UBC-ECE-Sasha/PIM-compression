@@ -166,16 +166,13 @@ int main(int argc, char **argv)
 	if (read_input_host(input_file, &input))
 		return -1;
 
-	double preproc_time = 0.0;
-	double alg_time = 0.0;
-	double postproc_time = 0.0;
-
+	struct program_runtime runtime;
 	if (compress) {
-		setup_compression(&input, &output, &preproc_time);
+		setup_compression(&input, &output, &runtime);
 
 		if (use_dpu)
 		{
-			status = snappy_compress_dpu(&input, &output, block_size, &preproc_time, &postproc_time);
+			status = snappy_compress_dpu(&input, &output, block_size, &runtime);
 		}
 		else
 		{
@@ -186,16 +183,16 @@ int main(int argc, char **argv)
 			status = snappy_compress_host(&input, &output, block_size);
 			gettimeofday(&end, NULL);
 
-			alg_time = get_runtime(&start, &end);
+			runtime.run = get_runtime(&start, &end);
 		}
 	}
 	else {
-		if (setup_decompression(&input, &output, &preproc_time))
+		if (setup_decompression(&input, &output, &runtime))
 			return -1;
 
 		if (use_dpu)
 		{
-			status = snappy_decompress_dpu(&input, &output, &preproc_time, &postproc_time);
+			status = snappy_decompress_dpu(&input, &output, &runtime);
 		}
 		else
 		{
@@ -206,7 +203,7 @@ int main(int argc, char **argv)
 			status = snappy_decompress_host(&input, &output);
 			gettimeofday(&end, NULL);
 
-			alg_time = get_runtime(&start, &end);
+			runtime.run = get_runtime(&start, &end);
 		}
 	}
 	
@@ -225,9 +222,13 @@ int main(int argc, char **argv)
 			printf("Compression ratio: %f\n", 1 - (double)input.length / (double)output.length);
 		}
 	
-		printf("Pre-processing time: %f\n", preproc_time);
-		printf("Host time: %f\n", alg_time);
-		printf("Post-processing time: %f\n", postproc_time);
+		printf("Pre-processing time: %f\n", runtime.pre);
+		printf("Alloc time: %f\n", runtime.d_alloc);
+		printf("Load time: %f\n", runtime.load);
+		printf("Copy in time: %f\n", runtime.copy_in);
+		printf("Host time: %f\n", runtime.run);
+		printf("Copy out time: %f\n", runtime.copy_out);
+		printf("Free time: %f\n", runtime.d_free);
 	}
 	else
 	{

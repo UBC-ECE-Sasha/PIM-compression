@@ -9,10 +9,10 @@
  *
  * @param input: holds input buffer information
  * @param output: holds output buffer information
- * @param preproc_time: time it takes to set up decompression, added to existing value
+ * @param runtime: struct holding breakdown of runtimes for different parts of the program
  * @return SNAPPY_OK if successful, error code otherwise
  */
-snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time);
+snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime);
 
 /**
  * Perform the Snappy decompression on the host.
@@ -28,10 +28,9 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
  *
  * @param input: holds input buffer information
  * @param output: holds output buffer information
- * @param preproc_time: time it takes to set up decompression and load the DPU, added to existing value
- * @param postproc_time: time it takes to grab output data from DPU, added to existing value
+ * @param runtime: struct holding breakdown of runtimes for different parts of the program
  * @return SNAPPY_OK if successful, error code otherwise
  */
-snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time, double *postproc_time);
+snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime);
 
 #endif /* _SNAPPY_DECOMPRESSION_H_ */

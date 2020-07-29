@@ -40,6 +40,15 @@ typedef struct host_buffer_context
 	unsigned long max;		// Maximum allowed lenght of buffer
 } host_buffer_context;
 
+struct program_runtime {
+	double pre;
+	double d_alloc;
+	double load;	
+	double copy_in;
+	double run;
+	double copy_out;
+	double d_free;
+};
 
 /**
  * Calculate the difference between two timeval structs.

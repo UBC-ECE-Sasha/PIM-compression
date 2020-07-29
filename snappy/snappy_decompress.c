@@ -184,7 +184,7 @@ static bool write_copy_host(struct host_buffer_context *output, uint32_t copy_le
 }
 
 
-snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time)
+snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime)
 {
 	struct timeval start;
 	struct timeval end;
@@ -209,7 +209,7 @@ snappy_status setup_decompression(struct host_buffer_context *input, struct host
 	output->length = dlength;
 
 	gettimeofday(&end, NULL);
-	*preproc_time += get_runtime(&start, &end);
+	runtime->pre = get_runtime(&start, &end);
 
 	return SNAPPY_OK;
 }
@@ -289,7 +289,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 }
 
 
-snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, double *preproc_time, double *postproc_time)
+snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime)
 {
 	struct timeval start;
 	struct timeval end;
@@ -340,15 +340,25 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 	input->curr = input_start; // Reset the pointer back to start for copying data to the DPU
 
+	gettimeofday(&end, NULL);
+	runtime->pre += get_runtime(&start, &end);
+
+	// Allocate the DPUs
+	gettimeofday(&start, NULL);
 	struct dpu_set_t dpus;
 	struct dpu_set_t dpu_rank;
 	struct dpu_set_t dpu;
-
-	// Allocate the DPUs
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
+	gettimeofday(&end, NULL);
+	runtime->d_alloc = get_runtime(&start, &end);	
+
+	gettimeofday(&start, NULL);	
 	DPU_ASSERT(dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL));
+	gettimeofday(&end, NULL);
+	runtime->load = get_runtime(&start, &end);
 
 	// Calculate input length without header and aligned output length
+	gettimeofday(&start, NULL);
 	uint32_t total_input_length = input->length - (input->curr - input->buffer);
 	uint32_t aligned_output_length = ALIGN(output->length, 8);
 
@@ -423,7 +433,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	gettimeofday(&end, NULL);
-	*preproc_time += get_runtime(&start, &end);
+	runtime->copy_in += get_runtime(&start, &end);
 
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -433,9 +443,8 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		return SNAPPY_INVALID_INPUT;
 	}
 
-	gettimeofday(&start, NULL);
-
 	// Deallocate the DPUs
+	gettimeofday(&start, NULL);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
 #ifdef BULK_XFER
@@ -464,11 +473,14 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 #endif
 	}
-
-	DPU_ASSERT(dpu_free(dpus));
-
+	
 	gettimeofday(&end, NULL);
-	*postproc_time += get_runtime(&start, &end);
+	runtime->copy_out = get_runtime(&start, &end);
+
+	gettimeofday(&start, NULL);
+	DPU_ASSERT(dpu_free(dpus));
+	gettimeofday(&end, NULL);
+	runtime->d_free += get_runtime(&start, &end);
 	
 	return SNAPPY_OK;
 }	
