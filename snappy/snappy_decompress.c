@@ -373,7 +373,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 #endif
 		DPU_FOREACH(dpu_rank, dpu) {
 			// Check to get rid of array bounds compiler warning
-			if (dpu_idx == NR_DPUS)
+			if (dpu_idx >= NR_DPUS)
 				break; 
 
 			// Calculate input and output lengths for each DPU

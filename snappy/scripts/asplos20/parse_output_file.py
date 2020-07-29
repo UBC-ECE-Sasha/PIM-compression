@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import pathlib
+from operator import add
 
 def get_max_cycles(path: pathlib.Path):
 	"""
@@ -27,10 +28,10 @@ def get_max_cycles(path: pathlib.Path):
 
 	return max_cycles
 
-def get_postproc_time(path: pathlib.Path):
+def get_overhead_time(path: pathlib.Path):
 	"""
-	open a program output file and parse out
-	the post-processing time of the program.
+	Open a program output file and parse out
+	all the overhead times of the program.
 	
 	:param path: file to parse
 	"""
@@ -39,33 +40,26 @@ def get_postproc_time(path: pathlib.Path):
 		lines = f.readlines()
 
 		# parse out the runtime
-		runtime = 0
-		for line in lines:
-			if "Post-processing time" in line:
-				line_split = line.split(' ')
-				runtime = float(line_split[-1])
-				break
-
-	return runtime
-
-def get_preproc_time(path: pathlib.Path):
-	"""
-	open a program output file and parse out
-	the pre-processing time of the program.
-	
-	:param path: file to parse
-	"""
-	with path.open() as f:
-		# read lines
-		lines = f.readlines()
-
-		# parse out the runtime
-		runtime = 0
+		runtime = []
 		for line in lines:
 			if "Pre-processing time" in line:
 				line_split = line.split(' ')
-				runtime = float(line_split[-1])
-				break
+				runtime.append(float(line_split[-1]))
+			if "Alloc time" in line:
+				line_split = line.split(' ')
+				runtime.append(float(line_split[-1]))
+			if "Load time" in line:
+				line_split = line.split(' ')
+				runtime.append(float(line_split[-1]))
+			if "Copy in time" in line:
+				line_split = line.split(' ')
+				runtime.append(float(line_split[-1]))
+			if "Copy out time" in line:
+				line_split = line.split(' ')
+				runtime.append(float(line_split[-1]))
+			if "Free time" in line:
+				line_split = line.split(' ')
+				runtime.append(float(line_split[-1]))
 
 	return runtime
 
@@ -113,9 +107,9 @@ def get_avg_host_runtime(path: pathlib.Path, testfile):
 	else:
 		return -1
 
-def get_avg_prepostproc_time(path: pathlib.Path, testfile, num_dpus, num_tasks):
+def get_avg_overhead_time(path: pathlib.Path, testfile, num_dpus, num_tasks):
 	"""
-	Calculate the average pre- and post- processing time reported by output
+	Calculate the average broken down overhead time reported by output
 	files in a given folder for a particular test case.
 
 	:param path: Directory storing output files
@@ -123,19 +117,18 @@ def get_avg_prepostproc_time(path: pathlib.Path, testfile, num_dpus, num_tasks):
 	:param num_dpus: Number of dpus used for the desired test
 	:param num_tasks: Number of tasks used for the desired test
 	"""
-	time = 0.0
+	time = [0.0]*6
 	num_files = 0
 	for filename in path.iterdir():
 		dpus = re.search(rf"dpus={num_dpus}[^0-9]", str(filename))
 		tasklets = re.search(rf"tasklets={num_tasks}[^0-9]", str(filename))
 		
 		if (testfile in str(filename)) and (dpus is not None) and (tasklets is not None):
-			time += get_preproc_time(filename)
-			time += get_postproc_time(filename)
+			time = list(map(add, time, get_overhead_time(filename)))
 			num_files += 1
 
 	if num_files > 0:
-		return (time / num_files)
+		return [x / num_files for x in time]
 	else:
 		return -1
 
