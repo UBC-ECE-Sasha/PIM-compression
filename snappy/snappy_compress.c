@@ -612,7 +612,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	}
 
 	gettimeofday(&end, NULL);
-	runtime->copy_in += get_runtime(&start, &end);
+	runtime->copy_in = get_runtime(&start, &end);
 	
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -627,10 +627,12 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	fwrite(output->buffer, sizeof(uint8_t), output->length, fout);
 	
 	// Deallocate the DPUs
-	gettimeofday(&start, NULL);
+	runtime->copy_out = 0.0;
 	uint32_t max_output_length = snappy_max_compressed_length(input_blocks_per_dpu * block_size);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
+		gettimeofday(&start, NULL);
+
 		// Get number of DPUs in this rank
 		uint32_t nr_dpus;
 		DPU_ASSERT(dpu_get_nr_dpus(dpu_rank, &nr_dpus));
@@ -681,6 +683,10 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 #ifdef BULK_XFER
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 #endif
+		// Don't count the time it takes to write the data to a file, since we don't
+		// count that for the host
+		gettimeofday(&end, NULL);
+		runtime->copy_out += get_runtime(&start, &end);	
 
 		for (uint32_t d = nr_dpus; d > 0; d--) {
 			uint32_t curr_dpu_idx = dpu_idx - d;
@@ -691,13 +697,10 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 		}
 	}
 
-	gettimeofday(&end, NULL);
-	runtime->copy_out = get_runtime(&start, &end);	
-	
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
-	runtime->d_free += get_runtime(&start, &end);
+	runtime->d_free = get_runtime(&start, &end);
 
 	fclose(fout);
 

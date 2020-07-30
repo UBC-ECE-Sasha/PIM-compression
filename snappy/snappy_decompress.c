@@ -433,7 +433,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	gettimeofday(&end, NULL);
-	runtime->copy_in += get_runtime(&start, &end);
+	runtime->copy_in = get_runtime(&start, &end);
 
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -480,7 +480,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
-	runtime->d_free += get_runtime(&start, &end);
+	runtime->d_free = get_runtime(&start, &end);
 	
 	return SNAPPY_OK;
 }	
