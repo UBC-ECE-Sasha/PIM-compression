@@ -4,6 +4,7 @@
 #include "common.h"
 #include <sys/time.h>
 
+// Comment out to load data for each DPU individually
 #define BULK_XFER
 
 #define GET_ELEMENT_TYPE(_tag)  (_tag & BITMASK(2))
@@ -40,6 +41,7 @@ typedef struct host_buffer_context
 	unsigned long max;		// Maximum allowed lenght of buffer
 } host_buffer_context;
 
+// Breakdown of time spent doing each action
 struct program_runtime {
 	double pre;
 	double d_alloc;

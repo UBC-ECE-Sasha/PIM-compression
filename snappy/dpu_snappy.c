@@ -91,9 +91,6 @@ double get_runtime(struct timeval *start, struct timeval *end) {
 	return (end_time - start_time);
 }
 
-/**
- * Outputs the size of the decompressed snappy file.
- */
 int main(int argc, char **argv)
 {
 	int opt;

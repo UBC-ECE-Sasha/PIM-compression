@@ -45,7 +45,7 @@ def run_tasklet_test(files, min_tasklet, max_tasklet, incr, num_dpu):
                                 dpu = float(get_avg_max_cycles(pathlib.Path("results/compression"), testfile, num_dpu, i)) / 266000000
                                 dpu_overhead = get_avg_overhead_time(pathlib.Path("results/compression"), testfile, num_dpu, i)
 
-                                if dpu is not 0 or dpu is not -1:
+                                if dpu > 0:
                                     std_dpu = host / (dpu + ovr for ovr in dpu_overhead)
                                     writer.writerow([testfile, std_dpu, i])
                 
@@ -61,7 +61,7 @@ def run_tasklet_test(files, min_tasklet, max_tasklet, incr, num_dpu):
                                 dpu = float(get_avg_max_cycles(pathlib.Path("results/decompression"), testfile, num_dpu, i)) / 266000000
                                 dpu_overhead = get_avg_overhead_time(pathlib.Path("results/compression"), testfile, num_dpu, i)
 
-                                if dpu is not 0 or dpu is not -1:
+                                if dpu > 0:
                                     std_dpu = host / (dpu + ovr for ovr in dpu_overhead)
                                     writer.writerow([testfile, std_dpu, i])
         
@@ -129,7 +129,7 @@ def run_breakdown_test(testfile, min_dpu, max_dpu, incr, tasklets):
         print(f'./dpu_snappy -d -c -i ../test/{testfile}.txt > results/compression/{testfile}_dpus={i}_tasklets={tasklets}.txt')
         os.system(f'./dpu_snappy -d -c -i ../test/{testfile}.txt > results/compression/{testfile}_dpus={i}_tasklets={tasklets}.txt')
 
-    with open('results/compression_breakdown.csv', 'w', newline='') as csvfile:
+    with open(f'results/{testfile}_compression_breakdown.csv', 'w', newline='') as csvfile:
             writer = csv.writer(csvfile, delimiter=',')
             writer.writerow(['prepare', 'alloc', 'load', 'copy_in', 'run', 'copy_out', 'free', 'dpus'])
 
@@ -141,7 +141,7 @@ def run_breakdown_test(testfile, min_dpu, max_dpu, incr, tasklets):
                     writer.writerow([dpu_overhead[0], dpu_overhead[1], dpu_overhead[2], dpu_overhead[3],
                         dpu, dpu_overhead[4], dpu_overhead[5], i])
        
-    with open('results/decompression_breakdown.csv', 'w', newline='') as csvfile:
+    with open(f'results/{testfile}_decompression_breakdown.csv', 'w', newline='') as csvfile:
             writer = csv.writer(csvfile, delimiter=',')
             writer.writerow(['prepare', 'alloc', 'load', 'copy_in', 'run', 'copy_out', 'free', 'dpus'])
 
@@ -149,18 +149,18 @@ def run_breakdown_test(testfile, min_dpu, max_dpu, incr, tasklets):
                 dpu = float(get_avg_max_cycles(pathlib.Path("results/decompression"), testfile, i, tasklets)) / 266000000
                 dpu_overhead = get_avg_overhead_time(pathlib.Path("results/decompression"), testfile, i, tasklets)
 
-                if dpu > 0.0:
+                if dpu > 0:
                     writer.writerow([dpu_overhead[0], dpu_overhead[1], dpu_overhead[2], dpu_overhead[3],
                         dpu, dpu_overhead[4], dpu_overhead[5], i])
      
 
 if __name__ == "__main__":
-        parser = argparse.ArgumentParser(description='Run tests measuring host speedup that vary either #DPUs or #tasklets')
-        parser.add_argument('-d', help='Keep number of DPUs constant to this number')
+        parser = argparse.ArgumentParser(description='Run a specific test')
         requiredArgs = parser.add_argument_group('required arguments')
+		requiredArgs.add_argument('-t', '--test', required=True, help='Which test to run: 1 - vary #DPUs, 2 - vary #tasklets, 3 - breakdown of time spent for one testfile')
         requiredArgs.add_argument('-f', '--files', nargs='+', required=True, help='List of test files to run, without file endings')
-        requiredArgs.add_argument('-r', '--range', nargs='+', help='Range of DPUs or tasklets to test')
-        requiredArgs.add_argument('-i', '--incr', help='Increment to test within the range')
+        requiredArgs.add_argument('-r', '--range', nargs='+', required=True, help='Range of DPUs or tasklets to test: [MIN] [MAX]')
+        requiredArgs.add_argument('-i', '--incr', required=True, help='Increment to test within the range')
 
         args = parser.parse_args()
         files = args.files
@@ -175,9 +175,12 @@ if __name__ == "__main__":
         os.makedirs("results/decompression", exist_ok=True)
 
         # Set up the test conditions
-        if args.d is None:
+		try:
+			if int(arg.t) == 1:
                 run_dpu_test(files, range_min, range_max, incr) 
-       #         run_breakdown_test("spamfile", range_min, range_max, incr, 12)
-        else:
+			elif int(arg.t) == 2:
                 run_tasklet_test(files, range_min, range_max, incr, args.d)
-        
+			elif int(arg.t) == 3:
+                run_breakdown_test(files[0], range_min, range_max, incr, 12)
+        except:
+			parser.print_help()
