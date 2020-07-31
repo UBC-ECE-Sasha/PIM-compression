@@ -445,10 +445,10 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 	// Deallocate the DPUs
 	runtime->copy_out = 0;
-	gettimeofday(&start, NULL);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
 		uint32_t starting_dpu_idx = dpu_idx;
+		gettimeofday(&start, NULL);
 #ifdef BULK_XFER
 		uint32_t largest_output_length = 0;
 #endif
