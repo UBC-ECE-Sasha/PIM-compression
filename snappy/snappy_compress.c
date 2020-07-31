@@ -631,6 +631,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	uint32_t max_output_length = snappy_max_compressed_length(input_blocks_per_dpu * block_size);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
+		uint32_t starting_dpu_idx = dpu_idx;
 		gettimeofday(&start, NULL);
 
 		// Get number of DPUs in this rank
@@ -642,7 +643,6 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 
 #ifdef BULK_XFER
 		uint32_t largest_output_length = 0;
-		uint32_t starting_dpu_idx = dpu_idx;
 		DPU_FOREACH(dpu_rank, dpu) {
 			DPU_ASSERT(dpu_prepare_xfer(dpu, output_length[dpu_idx]));
 			dpu_idx++;
@@ -675,18 +675,24 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, dpu_bufs[dpu_idx], ALIGN(dpu_output_length, 8)));
 #endif
 
-			printf("------DPU %d Logs------\n", dpu_idx);
-			DPU_ASSERT(dpu_log_read(dpu, stdout));
 			dpu_idx++;
 		}
 		
 #ifdef BULK_XFER
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 #endif
-		// Don't count the time it takes to write the data to a file, since we don't
-		// count that for the host
+		// Don't count the time it takes to read the DPU log or write the data to a file, 
+		// since we don't count that for the host
 		gettimeofday(&end, NULL);
 		runtime->copy_out += get_runtime(&start, &end);	
+
+		// Print the logs
+		dpu_idx = starting_dpu_idx;
+		DPU_FOREACH(dpu_rank, dpu) {
+			printf("------DPU %d Logs------\n", dpu_idx);
+			DPU_ASSERT(dpu_log_read(dpu, stdout));
+			dpu_idx++;
+		}
 
 		for (uint32_t d = nr_dpus; d > 0; d--) {
 			uint32_t curr_dpu_idx = dpu_idx - d;

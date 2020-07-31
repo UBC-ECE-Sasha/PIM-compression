@@ -444,9 +444,11 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	// Deallocate the DPUs
+	runtime->copy_out = 0;
 	gettimeofday(&start, NULL);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
+		uint32_t starting_dpu_idx = dpu_idx;
 #ifdef BULK_XFER
 		uint32_t largest_output_length = 0;
 #endif
@@ -464,18 +466,23 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 #endif		
 			}
 
-			printf("------DPU %d Logs------\n", dpu_idx);
-			DPU_ASSERT(dpu_log_read(dpu, stdout));
-
 			dpu_idx++;
 		}
 #ifdef BULK_XFER	
 		DPU_ASSERT(dpu_push_xfer(dpu_rank, DPU_XFER_FROM_DPU, "output_buffer", 0, ALIGN(largest_output_length, 8), DPU_XFER_DEFAULT));
 #endif
-	}
 	
-	gettimeofday(&end, NULL);
-	runtime->copy_out = get_runtime(&start, &end);
+		gettimeofday(&end, NULL);
+		runtime->copy_out += get_runtime(&start, &end);
+
+		// Print the logs
+		dpu_idx = starting_dpu_idx;
+		DPU_FOREACH(dpu_rank, dpu) {
+			printf("------DPU %d Logs------\n", dpu_idx);
+			DPU_ASSERT(dpu_log_read(dpu, stdout));
+			dpu_idx++;
+		}	
+	}
 
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
