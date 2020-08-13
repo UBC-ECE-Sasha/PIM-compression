@@ -157,7 +157,7 @@ def run_breakdown_test(testfile, min_dpu, max_dpu, incr, tasklets):
 if __name__ == "__main__":
         parser = argparse.ArgumentParser(description='Run a specific test')
         requiredArgs = parser.add_argument_group('required arguments')
-		requiredArgs.add_argument('-t', '--test', required=True, help='Which test to run: 1 - vary #DPUs, 2 - vary #tasklets, 3 - breakdown of time spent for one testfile')
+        requiredArgs.add_argument('-t', '--test', required=True, help='Which test to run: 1 - vary #DPUs, 2 - vary #tasklets, 3 - breakdown of time spent for one testfile')
         requiredArgs.add_argument('-f', '--files', nargs='+', required=True, help='List of test files to run, without file endings')
         requiredArgs.add_argument('-r', '--range', nargs='+', required=True, help='Range of DPUs or tasklets to test: [MIN] [MAX]')
         requiredArgs.add_argument('-i', '--incr', required=True, help='Increment to test within the range')
@@ -175,12 +175,12 @@ if __name__ == "__main__":
         os.makedirs("results/decompression", exist_ok=True)
 
         # Set up the test conditions
-		try:
-			if int(arg.t) == 1:
+        try:
+            if int(args.test) == 1:
                 run_dpu_test(files, range_min, range_max, incr) 
-			elif int(arg.t) == 2:
+            elif int(args.test) == 2:
                 run_tasklet_test(files, range_min, range_max, incr, args.d)
-			elif int(arg.t) == 3:
+            elif int(args.test) == 3:
                 run_breakdown_test(files[0], range_min, range_max, incr, 12)
         except:
-			parser.print_help()
+            parser.print_help()

@@ -5,6 +5,9 @@
 #include "alloc.h"
 #include "dpu_decompress.h"
 
+// Comment out to count instructions
+#define COUNT_CYC
+
 // WRAM variables
 __host uint32_t input_length;
 __host uint32_t output_length;
@@ -70,8 +73,12 @@ int main()
 		input.length = input_length - input_start;
 		output.length = output_length - output_start;
 	} 
-	
+
+#ifdef COUNT_CYC
 	perfcounter_config(COUNT_CYCLES, true);
+#else
+	perfcounter_config(COUNT_INSTRUCTIONS, true);
+#endif
 	if (input.length != 0) {
 		// Do the uncompress
 		if (dpu_uncompress(&input, &output))
@@ -81,7 +88,11 @@ int main()
 		}
 	}
 
-	printf("Tasklet %d: completed in %ld cycles\n", idx, perfcounter_get());
+#ifdef COUNT_CYC
+	printf("Tasklet %d: %ld cycles, %d bytes\n", idx, perfcounter_get(), input.length);
+#else
+	printf("Tasklet %d: %ld instructionsi, %d bytes\n", idx, perfcounter_get(), input.length);
+#endif	
 	return 0;
 }
 
