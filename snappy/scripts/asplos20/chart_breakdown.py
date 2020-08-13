@@ -23,9 +23,7 @@ def split_by_tasklet(
         "<dpu>": {
             "<tasklet>": {
                 "total": float,
-                "prepare": float,
-                "alloc": float,
-                "load": float,
+                "setup": float,
                 "copy in": float,
                 "DPU excecution": float,
                 "copy out": float
@@ -58,13 +56,11 @@ def split_by_tasklet(
 
         times_by_dpu[dpu_key][12] = {
             "DPU total": pp + a + l + ci + de + co + f,
-            "prepare": pp,
-            "alloc": a,
-            "load": l,
-            "copy in": ci,
-            "DPU execution": de,
-            "copy out": co,
-            "free": f,
+            "Setup": pp + a + l,
+            "Copy In": ci,
+            "Run": de,
+            "Copy Out": co,
+            "Free": f,
         }
 
     return times_by_dpu
@@ -100,9 +96,7 @@ def generate_plots(
         "<dpu>": {
             "<tasklet>": {
                 "total": float,
-                "prepare": float,
-                "alloc": float,
-                "load": float,
+                "setup": float,
                 "copy in": float,
                 "DPU excecution": float,
                 "copy out": float
@@ -217,7 +211,7 @@ def main():
         },
     )
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6.8, 2.5))
 
     info_data = []
 
@@ -240,35 +234,41 @@ def main():
                 markevery=[ymin_ind, ymax_ind],
             )
         else:
-            bottom = [0.0 for _ in plots[p]["free"]]
+            bottom = [0.0 for _ in plots[p]["Free"]]
+
+			# compute spacing between DPU bars, first figure out the step
+            # guess based on the first two, and assert the rest are the same
+            # otherwise rendering will be off
+            step = list_dpus[1] - list_dpus[0]
+            for a, b in zip(list_dpus, list_dpus[1:]):
+                check_step = b-a
+                assert step == check_step, f"DPU increment isn't consistent, expected {step} based on first two samples, got: {check_step}"
+            # add a small amount of spacing for each to get some white between each bar
+            step = step - 2
 
             for k in (
-                "prepare",
-                "load",
-                "alloc",
-                "copy in",
-                "DPU execution",
-                "copy out",
-                "free",
+                "Setup",
+                "Copy In",
+                "Run",
+                "Copy Out",
+                "Free",
             ):
                 ax.bar(
                     list_dpus,
                     plots[p][k],
                     bottom=bottom,
                     label=k,
-                    width=len(list_dpus) / 3,
+                    width=step,
                 )
                 bottom = calculate_bottom(bottom, plots[p][k])
 
     plt.title(config.title)
 
-    if config.xstepsize is not None:
-        start, end = ax.get_xlim()
-        ax.xaxis.set_ticks(np.arange(start, end, config.xstepsize))
+    ax.xaxis.set_major_locator(plt.MultipleLocator(64))
 
-    if config.ystepsize is not None:
-        start, end = ax.get_ylim()
-        ax.yaxis.set_ticks(np.arange(start, end, config.ystepsize))
+	# add grid 
+    ax.set_axisbelow(True)
+    ax.yaxis.grid(color='gray', linestyle='dashed')
 
     header = ("Tasklets", "min dpu/time", "max dpu/time")
     print("| ", " | ".join(header), " |")
@@ -280,12 +280,12 @@ def main():
     ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
 
     # Put a legend to the right of the current axis
-    ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+    ax.legend(loc="center left", prop={'size': 9}, bbox_to_anchor=(1, 0.5))
 
     plt.xlabel(config.xlabel)
     plt.ylabel(config.ylabel)
 
-    plt.savefig(config.outputfile, dpi=500)
+    plt.savefig(config.outputfile, bbox_inches='tight', dpi=300)
 
 
 if __name__ == "__main__":
