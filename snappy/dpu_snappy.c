@@ -33,20 +33,19 @@ static int read_input_host(char *in_file, struct host_buffer_context *input)
 	fseek(fin, 0, SEEK_SET);
 
 	if (input->length > input->max) {
-		fprintf(stderr, "input_size is too big (%d > %ld)\n",
+		fprintf(stderr, "input_size is too big (%ld > %ld)\n",
 				input->length, input->max);
 		return 1;
 	}
 
-	input->buffer = malloc(ALIGN(input->length, 8) * sizeof(*(input->buffer)));
+	input->buffer = malloc(ALIGN_LONG(input->length, 8) * sizeof(*(input->buffer)));
 	input->curr = input->buffer;
 	size_t n = fread(input->buffer, sizeof(*(input->buffer)), input->length, fin);
 	fclose(fin);
 
 #ifdef DEBUG
-	printf("%s: read %d bytes from %s (%lu)\n", __func__, input->length, in_file, n);
+	printf("%s: read %ld bytes from %s (%lu)\n", __func__, input->length, in_file, n);
 #endif
-
    return (n != input->length);
 }
 
@@ -211,11 +210,11 @@ int main(int argc, char **argv)
 			write_output_host(output_file, &output);
 
 		if (compress) {
-			printf("Compressed %u bytes to: %s\n", output.length, output_file);
+			printf("Compressed %ld bytes to: %s\n", output.length, output_file);
 			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
 		}
 		else {
-			printf("Decompressed %u bytes to: %s\n", output.length, output_file);
+			printf("Decompressed %ld bytes to: %s\n", output.length, output_file);
 			printf("Compression ratio: %f\n", 1 - (double)input.length / (double)output.length);
 		}
 	

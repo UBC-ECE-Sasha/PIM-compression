@@ -12,6 +12,8 @@
 #define GET_OFFSET_1_BYTE(_tag) ((_tag >> 5) & BITMASK(3))
 #define GET_LENGTH_2_BYTE(_tag) ((_tag >> 2) & BITMASK(6))
 
+#define ALIGN_LONG(_p, _width) (((long)_p + (_width-1)) & (0-_width))
+
 // Max length of the input and output files
 #define MAX_FILE_LENGTH MEGABYTE(30)
 
@@ -37,7 +39,7 @@ typedef struct host_buffer_context
 	const char *file_name;		// File name
 	uint8_t *buffer;		// Entire buffer
 	uint8_t *curr;			// Pointer to current location in buffer
-	uint32_t length;		// Length of buffer
+	unsigned long length;		// Length of buffer
 	unsigned long max;		// Maximum allowed lenght of buffer
 } host_buffer_context;
 
