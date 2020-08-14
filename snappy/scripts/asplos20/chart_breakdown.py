@@ -142,7 +142,7 @@ def parse_args() -> argparse.Namespace:
 		"--ystepsize", help="Chart y-axis stepsize", default=None, type=float
 	)
 	parser.add_argument(
-		"--title", help="Chart title", default="PIM-HDC Runtimes", type=str
+		"--title", help="Chart title", default="", type=str
 	)
 	parser.add_argument(
 		"--nohost", help="Do not include host", action="store_true", default=False
