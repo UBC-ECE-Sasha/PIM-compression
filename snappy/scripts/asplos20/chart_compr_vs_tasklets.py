@@ -20,7 +20,7 @@ def plot_results(results, filename, **kwargs):
 	fig, ax = plt.subplots(figsize=(6.8, 2.5))
 	ax2 = ax.twinx()
 	
-	ax.bar(results['tasklets'], results['time'], width=0.9)
+	ax.bar(results['tasklets'], results['time'], width=0.9, color='#627c98')
 	ax2.plot(results['tasklets'], results['compratio'], marker='o', color='#08315a')
 
 	# configure first axis

@@ -21,8 +21,8 @@ def get_max_cycles(path: pathlib.Path):
                         if "Tasklet" in line:
                                 line_split = line.split(' ')
                                 try:
-                                        if int(line_split[-2]) > max_cycles:
-                                                max_cycles = int(line_split[-2])
+                                        if int(line_split[-4]) > max_cycles:
+                                                max_cycles = int(line_split[-4])
                                 except ValueError:
                                         continue
 
