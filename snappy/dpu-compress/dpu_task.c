@@ -25,9 +25,11 @@ int main()
 	struct out_buffer_context output;
 	uint8_t idx = me();
 
-	// Clear the heap
-	if (idx == 0)
-		mem_reset();
+#ifdef COUNT_CYC	
+	perfcounter_config(COUNT_CYCLES, (idx == 0)? true : false);
+#else
+	perfcounter_config(COUNT_INSTRUCTIONS, (idx == 0)? true : false);
+#endif
 
 	printf("DPU starting, tasklet %d\n", idx);
 	
@@ -71,12 +73,6 @@ int main()
 	else {
 		input.length = input_length - input_start;
 	}
-
-#ifdef COUNT_CYC	
-	perfcounter_config(COUNT_CYCLES, true);
-#else
-	perfcounter_config(COUNT_INSTRUCTIONS, true);
-#endif
 
 	if (input.length != 0) {
 		// Do the uncompress
