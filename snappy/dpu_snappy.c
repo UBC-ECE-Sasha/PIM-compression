@@ -169,7 +169,7 @@ int main(int argc, char **argv)
 		if (use_dpu)
 		{
 			void *wrkmem = NULL;
-			status = snappy_compress_dpu(input.buffer, input.length, output.buffer, &output.length, wrkmem, &runtime);
+			status = snappy_compress_dpu(input.buffer, input.length, output.buffer, &output.length, wrkmem);
 		}
 		else
 		{
@@ -189,7 +189,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = snappy_decompress_dpu(&input, &output, &runtime);
+			status = snappy_decompress_dpu(input.buffer, input.length, output.buffer, &output.length);
 		}
 		else
 		{

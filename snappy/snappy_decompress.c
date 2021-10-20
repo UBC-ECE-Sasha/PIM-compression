@@ -37,6 +37,38 @@ static inline bool read_varint32(struct host_buffer_context *input, uint32_t *va
 }
 
 /**
+ * Attempt to read a varint from the input buffer. The format of a varint
+ * consists of little-endian series of bytes where the lower 7 bits are data
+ * and the upper bit is set if there are more bytes to read. Maximum size
+ * of the varint is 5 bytes.
+ *
+ * @param curr: pointer to the current pointer to the buffer
+ * @param val: read value of the varint
+ * @return False if all 5 bytes were read and there is still more data to
+ *		   read, True otherwise
+ */
+static inline bool read_varint32_dpu(uint8_t **curr, uint32_t *val)
+{
+	int shift = 0;
+	*val = 0;
+	uint8_t *cur = *curr;
+
+	for (uint8_t count = 0; count < 5; count++) {
+		int8_t c = (int8_t)(*cur++);
+		*val |= (c & BITMASK(7)) << shift;
+		if (!(c & (1 << 7))) {
+			*curr = cur;
+			return true;
+		}
+		shift += 7;
+	}
+
+	*curr = cur;
+
+	return false;
+}
+
+/**
  * Read an unsigned integer from the input buffer. Increments
  * the current location in the input buffer.
  *
@@ -49,6 +81,26 @@ static uint32_t read_uint32(struct host_buffer_context *input)
 	for (uint8_t i = 0; i < sizeof(uint32_t); i++) {
 		val |= (*input->curr++) << (8 * i);
 	}
+
+	return val;
+}
+
+/**
+ * Read an unsigned integer from the input buffer. Increments
+ * the current location in the input buffer.
+ *
+ * @param curr: pointer to the current pointer to the buffer
+ * @return Unsigned integer read
+ */
+static uint32_t read_uint32_dpu(uint8_t **curr)
+{
+	uint32_t val = 0;
+	uint8_t *cur = *curr;
+	for (uint8_t i = 0; i < sizeof(uint32_t); i++) {
+		val |= (*cur++) << (8 * i);
+	}
+
+	*curr = cur;
 
 	return val;
 }
@@ -289,21 +341,28 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 }
 
 
-snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime)
+snappy_status snappy_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len)
 {
 	struct timeval start;
 	struct timeval end;
 	gettimeofday(&start, NULL);
+	uint8_t *in_curr = in;
 
 	// Calculate workload of each task
 	uint32_t dblock_size;
-	if (!read_varint32(input, &dblock_size)) {
+	if (!read_varint32_dpu(&in_curr, &dblock_size)) {
 		fprintf(stderr, "Failed to read decompressed block size\n");
 		return SNAPPY_INVALID_INPUT;
 	}
-	uint8_t *input_start = input->curr;
 
-	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
+	if (!read_varint32_dpu(&in_curr, &dblock_size)) {
+		fprintf(stderr, "Failed to read decompressed block size\n");
+		return SNAPPY_INVALID_INPUT;
+	}
+
+	uint8_t *input_start = in_curr;
+
+	uint32_t num_blocks = (*out_len + dblock_size - 1) / dblock_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
 	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
 
@@ -332,16 +391,15 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 		}
 
 		// Read the compressed block size
-		uint32_t compressed_size = read_uint32(input);
-		input->curr += compressed_size;
+		uint32_t compressed_size = read_uint32_dpu(&in_curr);
+		in_curr += compressed_size;
 		
 		total_offset += compressed_size + sizeof(uint32_t);	
 		task_blocks++;
 	}
-	input->curr = input_start; // Reset the pointer back to start for copying data to the DPU
+	in_curr = input_start; // Reset the pointer back to start for copying data to the DPU
 
 	gettimeofday(&end, NULL);
-	runtime->pre += get_runtime(&start, &end);
 
 	// Allocate the DPUs
 	gettimeofday(&start, NULL);
@@ -350,17 +408,15 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	struct dpu_set_t dpu;
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 	gettimeofday(&end, NULL);
-	runtime->d_alloc = get_runtime(&start, &end);	
 
 	gettimeofday(&start, NULL);	
 	DPU_ASSERT(dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL));
 	gettimeofday(&end, NULL);
-	runtime->load = get_runtime(&start, &end);
 
 	// Calculate input length without header and aligned output length
 	gettimeofday(&start, NULL);
-	uint32_t total_input_length = input->length - (input->curr - input->buffer);
-	uint32_t aligned_output_length = ALIGN(output->length, 8);
+	uint32_t total_input_length = in_len - (in_curr - in);
+	uint32_t aligned_output_length = ALIGN(*out_len, 8);
 
 	uint32_t input_length;
 	uint32_t output_length;
@@ -404,11 +460,11 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 				largest_input_length = input_length;
 			}
 
-			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + input_offset[dpu_idx][0])));
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(in_curr + input_offset[dpu_idx][0])));
 #else
 			DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, input->curr + input_offset[dpu_idx][0], ALIGN(input_length,8)));
+			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, in_curr + input_offset[dpu_idx][0], ALIGN(input_length,8)));
 #endif
 			dpu_idx++;
 		}
@@ -433,7 +489,6 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	gettimeofday(&end, NULL);
-	runtime->copy_in = get_runtime(&start, &end);
 
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -444,7 +499,6 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	}
 
 	// Deallocate the DPUs
-	runtime->copy_out = 0;
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
 		uint32_t starting_dpu_idx = dpu_idx;
@@ -460,9 +514,9 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 				if (largest_output_length < output_length)
 					largest_output_length = output_length;
 
-				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
+				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(out + output_offset[dpu_idx][0])));
 #else
-			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, output->buffer + output_offset[dpu_idx][0], ALIGN(output_length, 8)));
+			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, out + output_offset[dpu_idx][0], ALIGN(output_length, 8)));
 #endif		
 			}
 
@@ -473,7 +527,6 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 #endif
 	
 		gettimeofday(&end, NULL);
-		runtime->copy_out += get_runtime(&start, &end);
 
 		// Print the logs
 		dpu_idx = starting_dpu_idx;
@@ -487,7 +540,6 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
-	runtime->d_free = get_runtime(&start, &end);
 	
 	return SNAPPY_OK;
 }	

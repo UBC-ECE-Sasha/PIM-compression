@@ -101,7 +101,7 @@ static inline void write_varint32(struct host_buffer_context *output, uint32_t v
  * Write a varint to the output buffer. See the decompression code
  * for a description of this format.
  *
- * @param output: holds output buffer information
+ * @param curr: pointer to the current pointer to the buffer
  * @param val: value to write
  */
 static inline void write_varint32_dpu(uint8_t **curr, uint32_t val)
@@ -524,8 +524,7 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 	return SNAPPY_OK;
 }
 
-snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len,
-            void *wrkmem, struct program_runtime *runtime)
+snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len, void *wrkmem)
 {
 	// Set block size
 	uint32_t block_size = 4 * 1024;
@@ -571,7 +570,6 @@ snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsign
 	*out_len = out_curr - out;
 	
 	gettimeofday(&end, NULL);
-	runtime->pre += get_runtime(&start, &end);
 
 	// Allocate DPUs
 	gettimeofday(&start, NULL);
@@ -580,13 +578,11 @@ snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsign
 	struct dpu_set_t dpu;
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 	gettimeofday(&end, NULL);
-	runtime->d_alloc = get_runtime(&start, &end);
 
 	// Load program
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_load(dpus, DPU_COMPRESS_PROGRAM, NULL));
 	gettimeofday(&end, NULL);
-	runtime->load = get_runtime(&start, &end);
 
 	// Copy variables common to all DPUs
 	gettimeofday(&start, NULL);
@@ -658,7 +654,6 @@ snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsign
 	}
 
 	gettimeofday(&end, NULL);
-	runtime->copy_in = get_runtime(&start, &end);
 	
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -673,7 +668,6 @@ snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsign
 	fwrite(out, sizeof(uint8_t), *out_len, fout);
 	
 	// Deallocate the DPUs
-	runtime->copy_out = 0.0;
 	uint32_t max_output_length = snappy_max_compressed_length(input_blocks_per_dpu * block_size);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
@@ -730,7 +724,6 @@ snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsign
 		// Don't count the time it takes to read the DPU log or write the data to a file, 
 		// since we don't count that for the host
 		gettimeofday(&end, NULL);
-		runtime->copy_out += get_runtime(&start, &end);	
 
 		// Print the logs
 		dpu_idx = starting_dpu_idx;
@@ -755,7 +748,6 @@ snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsign
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
-	runtime->d_free = get_runtime(&start, &end);
 
 	fclose(fout);
 
