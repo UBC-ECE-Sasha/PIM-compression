@@ -16,6 +16,7 @@
 
 // Max length of the input and output files
 #define MAX_FILE_LENGTH MEGABYTE(30)
+#define BLOCK_SIZE 4*1024
 
 // Return values
 typedef enum {

@@ -527,7 +527,7 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len, void *wrkmem)
 {
 	// Set block size
-	uint32_t block_size = 4 * 1024;
+	uint32_t block_size = BLOCK_SIZE;
 	uint8_t *in_curr = in;
 	uint8_t *out_curr = out;
 

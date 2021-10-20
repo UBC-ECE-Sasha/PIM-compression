@@ -97,7 +97,7 @@ int main(int argc, char **argv)
 	
 	int use_dpu = 0;
 	int compress = 0;
-	int block_size = 4 * 1024; // Default is 32KB
+	int block_size = BLOCK_SIZE; // Default is 32KB
 	char *input_file = NULL;
 	char *output_file = NULL;
 	struct host_buffer_context input;
@@ -210,22 +210,25 @@ int main(int argc, char **argv)
 		if (!(compress && use_dpu))
 			write_output_host(output_file, &output);
 
-		if (compress) {
-			// printf("Compressed %ld bytes to: %s\n", output.length, output_file);
-			// printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
+		if (compress && !use_dpu) {
+			printf("Compressed %ld bytes to: %s\n", output.length, output_file);
+			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
 		}
-		else {
+
+		if (!compress) {
 			printf("Decompressed %ld bytes to: %s\n", output.length, output_file);
 			printf("Compression ratio: %f\n", 1 - (double)input.length / (double)output.length);
 		}
-	
-		printf("Pre-processing time: %f\n", runtime.pre);
-		printf("Alloc time: %f\n", runtime.d_alloc);
-		printf("Load time: %f\n", runtime.load);
-		printf("Copy in time: %f\n", runtime.copy_in);
-		printf("Host time: %f\n", runtime.run);
-		printf("Copy out time: %f\n", runtime.copy_out);
-		printf("Free time: %f\n", runtime.d_free);
+
+		if (!use_dpu) {
+			printf("Pre-processing time: %f\n", runtime.pre);
+			printf("Alloc time: %f\n", runtime.d_alloc);
+			printf("Load time: %f\n", runtime.load);
+			printf("Copy in time: %f\n", runtime.copy_in);
+			printf("Host time: %f\n", runtime.run);
+			printf("Copy out time: %f\n", runtime.copy_out);
+			printf("Free time: %f\n", runtime.d_free);
+		}
 	}
 	else
 	{
