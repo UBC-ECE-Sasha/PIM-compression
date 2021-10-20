@@ -97,7 +97,7 @@ int main(int argc, char **argv)
 	
 	int use_dpu = 0;
 	int compress = 0;
-	int block_size = 32 * 1024; // Default is 32KB
+	int block_size = 4 * 1024; // Default is 32KB
 	char *input_file = NULL;
 	char *output_file = NULL;
 	struct host_buffer_context input;
@@ -168,7 +168,8 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = snappy_compress_dpu(&input, &output, block_size, &runtime);
+			void *wrkmem = NULL;
+			status = snappy_compress_dpu(input.buffer, input.length, output.buffer, &output.length, wrkmem, &runtime);
 		}
 		else
 		{
@@ -210,8 +211,8 @@ int main(int argc, char **argv)
 			write_output_host(output_file, &output);
 
 		if (compress) {
-			printf("Compressed %ld bytes to: %s\n", output.length, output_file);
-			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
+			// printf("Compressed %ld bytes to: %s\n", output.length, output_file);
+			// printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
 		}
 		else {
 			printf("Decompressed %ld bytes to: %s\n", output.length, output_file);

@@ -98,6 +98,46 @@ static inline void write_varint32(struct host_buffer_context *output, uint32_t v
 }
 
 /**
+ * Write a varint to the output buffer. See the decompression code
+ * for a description of this format.
+ *
+ * @param output: holds output buffer information
+ * @param val: value to write
+ */
+static inline void write_varint32_dpu(uint8_t **curr, uint32_t val)
+{
+	static const int mask = 128;
+	uint8_t *cur = *curr;
+
+	if (val < (1 << 7)) {
+		(*cur++) = val;
+	}
+	else if (val < (1 << 14)) {
+		(*cur++) = val | mask;
+		(*cur++) = val >> 7;
+	}
+	else if (val < (1 << 21)) {
+		(*cur++) = val | mask;
+		(*cur++) = (val >> 7) | mask;
+		(*cur++) = val >> 14;
+	}
+	else if (val < (1 << 28)) {
+		(*cur++) = val | mask;
+		(*cur++) = (val >> 7) | mask;
+		(*cur++) = (val >> 14) | mask;
+		(*cur++) = val >> 21;
+	}
+	else {
+		(*cur++) = val | mask;
+		(*cur++) = (val >> 7) | mask;
+		(*cur++) = (val >> 14) | mask;
+		(*cur++) = (val >> 21) | mask;
+		(*cur++) = val >> 28;
+	}
+	*curr = cur;
+}
+
+/**
  * Write an unsigned integer to the output buffer.
  *
  * @param ptr: pointer where to write the integer
@@ -484,14 +524,20 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 	return SNAPPY_OK;
 }
 
-snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size, struct program_runtime *runtime)
+snappy_status snappy_compress_dpu(const unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len,
+            void *wrkmem, struct program_runtime *runtime)
 {
+	// Set block size
+	uint32_t block_size = 4 * 1024;
+	uint8_t *in_curr = in;
+	uint8_t *out_curr = out;
+
 	struct timeval start;
 	struct timeval end;
 	gettimeofday(&start, NULL);
 
 	// Calculate the workload of each task
-	uint32_t num_blocks = (input->length + block_size - 1) / block_size;
+	uint32_t num_blocks = (in_len + block_size - 1) / block_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
 	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
 
@@ -520,9 +566,9 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	}
 
 	// Write the decompressed block size and length
-	write_varint32(output, input->length);
-	write_varint32(output, block_size);
-	output->length = output->curr - output->buffer;
+	write_varint32_dpu(&out_curr, in_len);
+	write_varint32_dpu(&out_curr, block_size);
+	*out_len = out_curr - out;
 	
 	gettimeofday(&end, NULL);
 	runtime->pre += get_runtime(&start, &end);
@@ -568,7 +614,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 				input_length = blocks * block_size;
 			}
 			else if ((dpu_idx == 0) || (input_block_offset[dpu_idx][0] != 0)) {
-				input_length = input->length - (input_block_offset[dpu_idx][0] * block_size);
+				input_length = in_len - (input_block_offset[dpu_idx][0] * block_size);
 			} 
 			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
 
@@ -583,11 +629,11 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 				largest_input_length = input_length;
 			}
 
-			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + (input_block_offset[dpu_idx][0] * block_size))));	
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(in_curr + (input_block_offset[dpu_idx][0] * block_size))));	
 #else
 			DPU_ASSERT(dpu_copy_to(dpu, "input_block_offset", 0, input_block_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, input->curr + (input_block_offset[dpu_idx][0] * block_size), ALIGN(input_length, 8)));
+			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, in_curr + (input_block_offset[dpu_idx][0] * block_size), ALIGN(input_length, 8)));
 #endif
 			dpu_idx++;
 		}
@@ -623,8 +669,8 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 	}
 
 	// Open the output file and write the header
-	FILE *fout = fopen(output->file_name, "w");
-	fwrite(output->buffer, sizeof(uint8_t), output->length, fout);
+	FILE *fout = fopen("test/alice_c.snappy", "w");
+	fwrite(out, sizeof(uint8_t), *out_len, fout);
 	
 	// Deallocate the DPUs
 	runtime->copy_out = 0.0;
@@ -659,7 +705,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			uint32_t dpu_output_length = 0;
 			for (uint8_t i = 0; i < NR_TASKLETS; i++) {
 				if (output_length[dpu_idx][i] != 0) {
-					output->length += output_length[dpu_idx][i];
+					*out_len += output_length[dpu_idx][i];
 					dpu_output_length = output_offset[dpu_idx][i] + output_length[dpu_idx][i];
 				}
 			}
@@ -702,6 +748,9 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			free(dpu_bufs[curr_dpu_idx]);
 		}
 	}
+
+	printf("Compressed %ld bytes to: %s\n", *out_len, "test/alice_c.snappy");	
+	printf("Compression ratio: %f\n", 1 - (double)*out_len / (double)in_len);
 
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
