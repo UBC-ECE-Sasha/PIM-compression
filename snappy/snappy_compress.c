@@ -664,7 +664,7 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 	}
 
 	// Open the output file and write the header
-	FILE *fout = fopen("test/alice_c.snappy", "w");
+	FILE *fout = fopen("compressed.snappy", "w");
 	fwrite(out, sizeof(uint8_t), *out_len, fout);
 	
 	// Deallocate the DPUs
