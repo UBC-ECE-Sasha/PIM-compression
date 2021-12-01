@@ -20,10 +20,14 @@
 typedef uint8_t BYTE;
 typedef uint16_t U16;
 typedef uint32_t U32;
+typedef uint64_t U64;
+
+typedef U64 reg_t;
 
 /* LZ4 constants */
 #define LZ4_DISTANCE_MAX 65535
 #define LASTLITERALS 	 5
+#define MINMATCH 		 4
 #define MFLIMIT 		 12
 
 /* Encoding Constants*/
@@ -54,8 +58,16 @@ static unsigned LZ4_isLittleEndian(void)
     return one.c[0];
 }
 
-static void LZ4_write16(void* memPtr, U16 value) { *(U16*)memPtr = value; }
-static void LZ4_write32(void* memPtr, U32 value) { *(U32*)memPtr = value; }
+/* __pack instructions are safer, but compiler specific, hence potentially problematic for some compilers */
+/* currently only defined for gcc and icc */
+typedef union { U16 u16; U32 u32; reg_t uArch; } __attribute__((packed)) unalign;
+
+static U16 LZ4_read16(const void* ptr) { return ((const unalign*)ptr)->u16; }
+static U32 LZ4_read32(const void* ptr) { return ((const unalign*)ptr)->u32; }
+static reg_t LZ4_read_ARCH(const void* ptr) { return ((const unalign*)ptr)->uArch; }
+
+static void LZ4_write16(void* memPtr, U16 value) { ((unalign*)memPtr)->u16 = value; }
+static void LZ4_write32(void* memPtr, U32 value) { ((unalign*)memPtr)->u32 = value; }
 
 static const U32 LZ4_skipTrigger = 6;
 
@@ -66,6 +78,125 @@ static const U32 LZ4_skipTrigger = 6;
 #    define assert(condition) ((void)0)
 #  endif
 
+
+static unsigned LZ4_NbCommonBytes (reg_t val)
+{
+    assert(val != 0);
+    if (LZ4_isLittleEndian()) {
+        if (sizeof(val) == 8) {
+#       if defined(_MSC_VER) && (_MSC_VER >= 1800) && defined(_M_AMD64) && !defined(LZ4_FORCE_SW_BITCOUNT)
+#         if defined(__clang__) && (__clang_major__ < 10)
+            /* Avoid undefined clang-cl intrinics issue.
+             * See https://github.com/lz4/lz4/pull/1017 for details. */
+            return (unsigned)__builtin_ia32_tzcnt_u64(val) >> 3;
+#         else
+            /* x64 CPUS without BMI support interpret `TZCNT` as `REP BSF` */
+            return (unsigned)_tzcnt_u64(val) >> 3;
+#         endif
+#       elif defined(_MSC_VER) && defined(_WIN64) && !defined(LZ4_FORCE_SW_BITCOUNT)
+            unsigned long r = 0;
+            _BitScanForward64(&r, (U64)val);
+            return (unsigned)r >> 3;
+#       elif (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
+                            ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
+                                        !defined(LZ4_FORCE_SW_BITCOUNT)
+            return (unsigned)__builtin_ctzll((U64)val) >> 3;
+#       else
+            const U64 m = 0x0101010101010101ULL;
+            val ^= val - 1;
+            return (unsigned)(((U64)((val & (m - 1)) * m)) >> 56);
+#       endif
+        } else /* 32 bits */ {
+#       if defined(_MSC_VER) && (_MSC_VER >= 1400) && !defined(LZ4_FORCE_SW_BITCOUNT)
+            unsigned long r;
+            _BitScanForward(&r, (U32)val);
+            return (unsigned)r >> 3;
+#       elif (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
+                            ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
+                        !defined(__TINYC__) && !defined(LZ4_FORCE_SW_BITCOUNT)
+            return (unsigned)__builtin_ctz((U32)val) >> 3;
+#       else
+            const U32 m = 0x01010101;
+            return (unsigned)((((val - 1) ^ val) & (m - 1)) * m) >> 24;
+#       endif
+        }
+    } else   /* Big Endian CPU */ {
+        if (sizeof(val)==8) {
+#       if (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
+                            ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
+                        !defined(__TINYC__) && !defined(LZ4_FORCE_SW_BITCOUNT)
+            return (unsigned)__builtin_clzll((U64)val) >> 3;
+#       else
+#if 1
+            /* this method is probably faster,
+             * but adds a 128 bytes lookup table */
+            static const unsigned char ctz7_tab[128] = {
+                7, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+                4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
+            };
+            U64 const mask = 0x0101010101010101ULL;
+            U64 const t = (((val >> 8) - mask) | val) & mask;
+            return ctz7_tab[(t * 0x0080402010080402ULL) >> 57];
+#else
+            /* this method doesn't consume memory space like the previous one,
+             * but it contains several branches,
+             * that may end up slowing execution */
+            static const U32 by32 = sizeof(val)*4;  /* 32 on 64 bits (goal), 16 on 32 bits.
+            Just to avoid some static analyzer complaining about shift by 32 on 32-bits target.
+            Note that this code path is never triggered in 32-bits mode. */
+            unsigned r;
+            if (!(val>>by32)) { r=4; } else { r=0; val>>=by32; }
+            if (!(val>>16)) { r+=2; val>>=8; } else { val>>=24; }
+            r += (!val);
+            return r;
+#endif
+#       endif
+        } else /* 32 bits */ {
+#       if (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
+                            ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
+                                        !defined(LZ4_FORCE_SW_BITCOUNT)
+            return (unsigned)__builtin_clz((U32)val) >> 3;
+#       else
+            val >>= 8;
+            val = ((((val + 0x00FFFF00) | 0x00FFFFFF) + val) |
+              (val + 0x00FF0000)) >> 24;
+            return (unsigned)val ^ 3;
+#       endif
+        }
+    }
+}
+
+#define STEPSIZE sizeof(reg_t)
+unsigned LZ4_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pInLimit)
+{
+    const BYTE* const pStart = pIn;
+
+    if (pIn < pInLimit-(STEPSIZE-1)) {
+        reg_t const diff = LZ4_read_ARCH(pMatch) ^ LZ4_read_ARCH(pIn);
+        if (!diff) {
+            pIn+=STEPSIZE; pMatch+=STEPSIZE;
+        } else {
+            return LZ4_NbCommonBytes(diff);
+    }   }
+
+    while (pIn < pInLimit-(STEPSIZE-1)) {
+        reg_t const diff = LZ4_read_ARCH(pMatch) ^ LZ4_read_ARCH(pIn);
+        if (!diff) { pIn+=STEPSIZE; pMatch+=STEPSIZE; continue; }
+        pIn += LZ4_NbCommonBytes(diff);
+        return (unsigned)(pIn - pStart);
+    }
+
+    if ((STEPSIZE==8) && (pIn<(pInLimit-3)) && (LZ4_read32(pMatch) == LZ4_read32(pIn))) { pIn+=4; pMatch+=4; }
+    if ((pIn<(pInLimit-1)) && (LZ4_read16(pMatch) == LZ4_read16(pIn))) { pIn+=2; pMatch+=2; }
+    if ((pIn<pInLimit) && (*pMatch == *pIn)) pIn++;
+    return (unsigned)(pIn - pStart);
+}
 
 /**
  * Calculate the rounded down log base 2 of an unsigned integer.
@@ -299,16 +430,18 @@ static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_li
  * @param table: pointer to allocated hash table
  * @param table_size: size of the hash table
  */
-static void compress_block(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
+static int compress_block(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
 	const int32_t shift = 32 - log2_floor(table_size);
-	BYTE* ip = (BYTE*) input->curr;		
+	BYTE* ip = (BYTE*) input->curr;	
+	char* const dest = output->curr;	
 	BYTE* op = (BYTE*) output->curr;
 	const BYTE* base = (const BYTE*) input -> curr;	
 
 
 	const BYTE* lowLimit = (const BYTE*) input-> curr;
 	const BYTE* const iend = ip + input_size;	
+	const BYTE* matchlimit = iend - LASTLITERALS;
 	const BYTE* const mflimitPlusOne = iend - MFLIMIT + 1;
 	const BYTE* anchor = (const BYTE*) ip;
 
@@ -338,7 +471,7 @@ static void compress_block(struct host_buffer_context *input, struct host_buffer
 
 			match = base + table[h];
 			forwardH = hash(forwardIp, shift);		
-			table[h] = forwardIp - base;
+			table[h] = ip - base;
 		} while (read_uint32(match) != read_uint32(ip));
 
 
@@ -376,6 +509,9 @@ _next_match:
 
 		/* Encode MatchLength */
 		{	unsigned matchCode;
+
+			matchCode = LZ4_count(ip+MINMATCH, match+MINMATCH, matchlimit);
+            ip += (size_t)matchCode + MINMATCH;
 
 			if (matchCode >= ML_MASK) {
 				*token += ML_MASK;
@@ -430,6 +566,7 @@ _last_literals:
 		op += lastRun;	
 	}
 
+	return (int)(((char*)op) - dest);
 }
 			
 /*************** Public Functions *******************/
@@ -456,12 +593,13 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 
 	// Write the decompressed length
 	uint32_t length_remain = input->length;
+	int bytes_compressed = 0;
 	//write_varint32(output, length_remain);
 
 	// Write the decompressed block size
 	//write_varint32(output, block_size);
 
-	while (input->curr < (input->buffer + input->length)) {
+	while (input->curr < (input->buffer + input->length) && length_remain > 0) {
 		// Get the next block size ot compress
 		uint32_t to_compress = MIN(length_remain, block_size);
 
@@ -470,13 +608,13 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 		get_hash_table(table, to_compress, &table_size);
 		
 		// Compress the current block
-		compress_block(input, output, to_compress, table, table_size);
+		bytes_compressed += compress_block(input, output, to_compress, table, table_size);
 		
 		length_remain -= to_compress;
 	}
 
 	// Update output length
-	output->length = (output->curr - output->buffer);
+	output->length = bytes_compressed;
 
 	return SNAPPY_OK;
 }
