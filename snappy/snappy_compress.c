@@ -16,26 +16,6 @@
 #define MAX_HASH_TABLE_BITS 14
 #define MAX_HASH_TABLE_SIZE (1U << MAX_HASH_TABLE_BITS)
 
-/* Types */
-typedef uint8_t BYTE;
-typedef uint16_t U16;
-typedef uint32_t U32;
-typedef uint64_t U64;
-
-typedef U64 reg_t;
-
-/* LZ4 constants */
-#define LZ4_DISTANCE_MAX 65535
-#define LASTLITERALS 	 5
-#define MINMATCH 		 4
-#define MFLIMIT 		 12
-
-/* Encoding Constants*/
-#define ML_BITS 4
-#define ML_MASK ((1U<<ML_BITS)-1)
-#define RUN_BITS (8-ML_BITS)
-#define RUN_MASK ((1U<<RUN_BITS)-1)
-
 /* Reading and writing to memory */
 
 /**
@@ -79,7 +59,7 @@ static const U32 LZ4_skipTrigger = 6;
 #  endif
 
 
-static unsigned LZ4_NbCommonBytes (reg_t val)
+static inline unsigned LZ4_NbCommonBytes (reg_t val)
 {
     assert(val != 0);
     if (LZ4_isLittleEndian()) {
@@ -173,7 +153,7 @@ static unsigned LZ4_NbCommonBytes (reg_t val)
 }
 
 #define STEPSIZE sizeof(reg_t)
-unsigned LZ4_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pInLimit)
+static inline unsigned LZ4_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pInLimit)
 {
     const BYTE* const pStart = pIn;
 
@@ -210,7 +190,7 @@ static inline int32_t log2_floor(uint32_t n)
 }
 
 /* customized variant of memcpy, which can overwrite up to 8 bytes beyond dstEnd */
-static void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
+static inline void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
 {
     BYTE* d = (BYTE*)dstPtr;
     const BYTE* s = (const BYTE*)srcPtr;
@@ -220,7 +200,7 @@ static void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
 }
 
 
-static void LZ4_writeLE16(void* memPtr, U16 value)
+static inline void LZ4_writeLE16(void* memPtr, U16 value)
 {
     if (LZ4_isLittleEndian()) {
         LZ4_write16(memPtr, value);
@@ -594,10 +574,7 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 	// Write the decompressed length
 	uint32_t length_remain = input->length;
 	int bytes_compressed = 0;
-	//write_varint32(output, length_remain);
-
-	// Write the decompressed block size
-	//write_varint32(output, block_size);
+	write_varint32(output, length_remain);
 
 	while (input->curr < (input->buffer + input->length) && length_remain > 0) {
 		// Get the next block size ot compress
