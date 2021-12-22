@@ -360,7 +360,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 	if ((src == NULL) || (outputSize < 0)) {return -1; }
 
 	{	const BYTE* ip = (const BYTE*) src;
-		const BYTE* const iend = ip + srcSize;
+		const BYTE* const iend = ip + srcSize - 2; // VARINT takes 2B
 
 		BYTE* op = (BYTE*) dst;
 		BYTE* const oend = op + outputSize;

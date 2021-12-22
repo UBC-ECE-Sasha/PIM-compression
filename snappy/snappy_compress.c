@@ -244,24 +244,6 @@ static inline void write_varint32(struct host_buffer_context *output, uint32_t v
 		*(output->curr++) = val | mask;
 		*(output->curr++) = val >> 7;
 	}
-	else if (val < (1 << 21)) {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = (val >> 7) | mask;
-		*(output->curr++) = val >> 14;
-	}
-	else if (val < (1 << 28)) {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = (val >> 7) | mask;
-		*(output->curr++) = (val >> 14) | mask;
-		*(output->curr++) = val >> 21;
-	}
-	else {
-		*(output->curr++) = val | mask;
-		*(output->curr++) = (val >> 7) | mask;
-		*(output->curr++) = (val >> 14) | mask;
-		*(output->curr++) = (val >> 21) | mask;
-		*(output->curr++) = val >> 28;
-	}
 }
 
 /**
@@ -546,7 +528,9 @@ _last_literals:
 		op += lastRun;	
 	}
 
-	return (int)(((char*)op) - dest);
+	output->curr = op;
+
+	return (int)(((char*)op) - dest); 
 }
 			
 /*************** Public Functions *******************/
@@ -573,7 +557,6 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 
 	// Write the decompressed length
 	uint32_t length_remain = input->length;
-	int bytes_compressed = 0;
 	write_varint32(output, length_remain);
 
 	while (input->curr < (input->buffer + input->length) && length_remain > 0) {
@@ -585,13 +568,13 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 		get_hash_table(table, to_compress, &table_size);
 		
 		// Compress the current block
-		bytes_compressed += compress_block(input, output, to_compress, table, table_size);
+		compress_block(input, output, to_compress, table, table_size);
 		
 		length_remain -= to_compress;
 	}
 
 	// Update output length
-	output->length = bytes_compressed;
+	output->length = (output->curr - output->buffer);
 
 	return SNAPPY_OK;
 }
