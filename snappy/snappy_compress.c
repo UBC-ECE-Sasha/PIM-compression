@@ -433,7 +433,7 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 
 			match = base + table[h];
 			forwardH = hash(forwardIp, shift);		
-			table[h] = ip - base;
+			table[h] = ip - base;	
 		} while (read_uint32(match) != read_uint32(ip));
 
 
@@ -451,6 +451,7 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 			}
 			else *token = (BYTE)(litLength<<ML_BITS);
 
+			printf("token: %d, litLength: %d\n", *token, litLength);
 			/* Copy Literals */
 			LZ4_wildCopy8(op, anchor, op+litLength);
 			op+=litLength;
@@ -467,6 +468,7 @@ _next_match:
 
 		/* Encode Offset */
 		assert(ip-match <= LZ4_DISTANCE_MAX);
+		printf("offset: %d\n", ip-match);
 		LZ4_writeLE16(op, (U16)(ip - match)); op+=2;
 
 		/* Encode MatchLength */
@@ -474,6 +476,8 @@ _next_match:
 
 			matchCode = LZ4_count(ip+MINMATCH, match+MINMATCH, matchlimit);
             ip += (size_t)matchCode + MINMATCH;
+
+			printf("matchlength: %d\n", matchCode + MINMATCH);
 
 			if (matchCode >= ML_MASK) {
 				*token += ML_MASK;
@@ -491,7 +495,6 @@ _next_match:
 				*token += (BYTE)(matchCode);
 		}
 		
-
 		anchor = ip;
 
 		/* Test end of chunk */
