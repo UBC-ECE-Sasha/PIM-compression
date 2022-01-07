@@ -50,23 +50,14 @@ static inline void advance_seqread(struct in_buffer_context *input, U32 len)
  */
 static inline U32 read_uint32(struct in_buffer_context *input, U32 offset)
 {
-	// Use the value from the sequential read cache if it's there
-	if ((offset - input->curr) < (SEQREAD_CACHE_SIZE - 4)) {
-		offset -= input->curr;
-		return (input->ptr[offset] |
-				(input->ptr[offset + 1] << 8) |
-				(input->ptr[offset + 2] << 16) |
-				(input->ptr[offset + 3] << 24));
-	} else {
-		BYTE data_read[16];
-		mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
+	BYTE data_read[16];
+	mram_read(&input->buffer[WINDOW_ALIGN(offset, 8)], data_read, 16);
 
-		offset %= 8;
-		return (data_read[offset] |
-				(data_read[offset + 1] << 8) |
-				(data_read[offset + 2] << 16) |
-				(data_read[offset + 3] << 24)); 
-	}
+	offset %= 8;
+	return (data_read[offset] |
+			(data_read[offset + 1] << 8) |
+			(data_read[offset + 2] << 16) |
+			(data_read[offset + 3] << 24)); 
 }
 
 /**
@@ -79,17 +70,28 @@ static inline U32 read_uint32(struct in_buffer_context *input, U32 offset)
  */
 static void update_token(struct out_buffer_context *output, U32 offset, BYTE token_val) 
 {
-	BYTE data_read[16];
-	U32 aligned_offset = WINDOW_ALIGN(offset, 8);
-	mram_read(&output->buffer[aligned_offset], data_read, 16);
-
-	offset %= 8;
-
-	// Fill in the compressed length
-	data_read[offset] = token_val;
+	printf("token_val: %d %d\n", token_val, offset);
 	
-	// Write the buffer back
-	mram_write(data_read, &output->buffer[aligned_offset], 16);
+	if (offset < output->append_window) {
+		
+		BYTE data_read[16];
+		BYTE* aligned_read;
+		U32 aligned_offset = WINDOW_ALIGN(offset, 8);
+		aligned_read = (BYTE*) ALIGN(data_read, 8);
+		/* Have read 8B into WRAM */
+		mram_read(&output->buffer[aligned_offset], aligned_read, 8);
+
+		offset &= 0x7;
+
+		printf("%d\n", aligned_read[offset]);
+
+		aligned_read[offset] = token_val;
+		
+		// Write the buffer back
+		mram_write(aligned_read, &output->buffer[aligned_offset], 8);
+	} else {
+		output->append_ptr[offset] = token_val;
+	}	
 }
 
 /**
@@ -106,8 +108,8 @@ static void write_output_buffer(struct out_buffer_context *output, BYTE *arr, U3
 	while (len) {
 		// If we are past the append window, write out current window to MRAM and start a new one
 		if (curr_index >= OUT_BUFFER_LENGTH) {
+			printf("h\n");
 			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
-
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
 			output->append_window += OUT_BUFFER_LENGTH;
 			curr_index -= OUT_BUFFER_LENGTH;
@@ -162,7 +164,7 @@ static void copy_output_buffer(struct in_buffer_context *input, struct out_buffe
  * @param len: length of the literal
  */
 static void emit_match_length(struct out_buffer_context *output, U32 match_len)
-{
+{	
 	BYTE match[17]; // Blocks are 4K
 	BYTE count = 0;
 
@@ -186,6 +188,7 @@ static void emit_match_length(struct out_buffer_context *output, U32 match_len)
  */
 static BYTE emit_literal(struct in_buffer_context *input, struct out_buffer_context *output, U32 lit_len)
 {
+	printf("lit_len: %d, output: %d\n", lit_len, output->curr);
 	BYTE token[17]; //blocks are 4K
 	BYTE token_len = 1;
 
@@ -212,7 +215,6 @@ static BYTE emit_literal(struct in_buffer_context *input, struct out_buffer_cont
 
 	/* Copy Literals */
 	copy_output_buffer(input, output, lit_len);
-	printf("token: %d, lit_len: %d\n", token[0], lit_len);	
 	return token[0];
 }
 
@@ -303,7 +305,7 @@ static int compress_block(struct in_buffer_context *input, struct out_buffer_con
 	U32 anchor = ip;
 
 	//TODO: Add checks for input of size 0, input < input_margin_bytes...
-
+	
 	if (input_size < MFLIMIT + 1) goto _last_literals;
 
 	/* First Byte */
@@ -317,6 +319,7 @@ static int compress_block(struct in_buffer_context *input, struct out_buffer_con
 		U32 forwardIp = ip;
 		int step = 1;
 		int searchMatchNb = 1 << LZ4_skipTrigger;
+		printf("%d\n", ip);
 		do {
 			U32 h = forwardH;
 			ip = forwardIp;
@@ -326,9 +329,17 @@ static int compress_block(struct in_buffer_context *input, struct out_buffer_con
 			if (forwardIp > mflimitPlusOne) goto _last_literals;
 
 			match = base + table[h];
+			if (ip == 76) {
+				printf("%d\n", read_uint32(input, ip));
+				printf("%d\n", read_uint32(input, match));
+				printf("%d\n", h);
+			}
 			forwardH = hash(read_uint32(input, forwardIp), shift);		
-			table[h] = ip - base;
-		} while (read_uint32(input, match) != read_uint32(input, ip));
+			table[h] = ip - base;			
+		} while (read_uint32(input, match) != read_uint32(input, ip));	
+		printf("%d\n", ip);
+		
+		printf("%d\n", match);
 
 		while (((ip>anchor) & (match > lowLimit)) && 
 		(read_uint32(input, ip - 1) == read_uint32(input, match -1))) { ip--; match--; }
@@ -336,9 +347,8 @@ static int compress_block(struct in_buffer_context *input, struct out_buffer_con
 		/* Encode Literals*/
 		token = output->curr;
 					
-		BYTE token_val = emit_literal(input, output, ip - anchor);			
+		BYTE token_val = emit_literal(input, output, ip - anchor);	
 		
-
 _next_match:
 		/* at this stage, the following variables must be correctly set :
          * - ip : at start of LZ operation
@@ -360,7 +370,7 @@ _next_match:
 			matchCode = find_match_length(input, match + MINMATCH, ip + MINMATCH, matchlimit);
 			ip += (size_t)matchCode + MINMATCH;
 			advance_seqread(input, matchCode + MINMATCH);
-			printf("matchlength: %d\n", matchCode + MINMATCH);
+			printf("matchlength: %d\n", matchCode + MINMATCH);		
 
 			if (matchCode >= ML_MASK) {
 				update_token(output, token, token_val + ML_MASK);
@@ -382,7 +392,13 @@ _next_match:
 		table[hash(read_uint32(input, ip), shift)] = ip - base;
 		if ( (match+LZ4_DISTANCE_MAX >= ip) 
 		&& (read_uint32(input, match) == read_uint32(input, ip)) )
-		{ token=output->curr++; update_token(output, token, 0); goto _next_match; }
+		{ 
+			printf("h\n\n"); 
+			token=output->curr++; 
+			token_val = 0;
+			update_token(output, token, token_val); 
+			goto _next_match; 
+		}
 
 		/* Prepare next loop */
 		forwardH = hash(read_uint32(input, ++ip), shift);
@@ -409,20 +425,9 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 	// Allocate the hash table for compression
 	U16 *table = (U16 *)mem_alloc(table_size);
 	
-	U32 length_remain = input->length;
-	while (input->curr < input->length) {
-		// Get the next block size to compress
-		U32 to_compress = MIN(length_remain, block_size);
+	// Compress the current block
+	compress_block(input, output, input->length, table, num_table_entries);
 
-		// Reset the hash table
-		memset(table, 0, table_size);	
-	
-		// Compress the current block
-		compress_block(input, output, to_compress, table, num_table_entries);
-	
-		length_remain -= to_compress;
-	}
-	
 	// Write out last buffer to MRAM
 	output->length = output->curr;
 	if (output->append_window < output->length) {

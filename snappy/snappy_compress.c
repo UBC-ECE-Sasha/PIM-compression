@@ -422,6 +422,7 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 		BYTE* forwardIp = ip;
 		int step = 1;
 		int searchMatchNb = 1 << LZ4_skipTrigger;
+		printf("%d\n", ip-base);
 		do {
 			U32 h = forwardH;
 			ip = forwardIp;
@@ -433,14 +434,23 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 
 			match = base + table[h];
 			forwardH = hash(forwardIp, shift);		
+			if (ip-base == 76 || ip-base == 135 || ip - base == 222) {
+				printf("%x\n", read_uint32(ip));
+				printf("%x\n", read_uint32(match));
+				printf("%x\n", table[h]);
+				printf("%d\n", h);
+			}
 			table[h] = ip - base;	
-		} while (read_uint32(match) != read_uint32(ip));
 
+		} while (read_uint32(match) != read_uint32(ip));
+		printf("%d \n", ip - base);
+		printf("%d \n", match - base);
 
 		while (((ip>anchor) & (match > lowLimit)) && (ip[-1]==match[-1])) { ip--; match--; }
 
 		/* Encode Literals*/
 		{	unsigned const litLength = (unsigned) (ip - anchor);
+			printf("litLength: %d, op: %d \n", litLength, op - output->curr);
 			token = op++;
 			
 			if (litLength >= RUN_MASK) {
@@ -451,7 +461,6 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 			}
 			else *token = (BYTE)(litLength<<ML_BITS);
 
-			printf("token: %d, litLength: %d\n", *token, litLength);
 			/* Copy Literals */
 			LZ4_wildCopy8(op, anchor, op+litLength);
 			op+=litLength;
@@ -494,6 +503,7 @@ _next_match:
 			} else
 				*token += (BYTE)(matchCode);
 		}
+		printf("token_val: %d\n", *token);
 		
 		anchor = ip;
 
@@ -508,7 +518,7 @@ _next_match:
 		table[hash(ip, shift)] = ip - base;
 		if ( (match+LZ4_DISTANCE_MAX >= ip) 
 		&& (read_uint32(match) == read_uint32(ip)) )
-		{ token=op++; *token=0; goto _next_match; }
+		{ printf("here***********\n"); token=op++; *token=0; goto _next_match; }
 
 		/* Prepare next loop */
 		forwardH = hash(++ip, shift);
@@ -622,9 +632,8 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 		dpu_blocks++;
 	}
 
-	// Write the decompressed block size and length
+	// Write the decompressed length
 	write_varint32_dpu(&out_curr, in_len);
-	write_varint32_dpu(&out_curr, block_size);
 	*out_len = out_curr - out;
 	
 	gettimeofday(&end, NULL);
@@ -800,7 +809,7 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 		}
 	}
 
-	printf("Compressed %ld bytes to: %s\n", *out_len, "test/alice_c.snappy");	
+	printf("Compressed %ld bytes to: %s\n", *out_len, "compressed.snappy");	
 	printf("Compression ratio: %f\n", 1 - (double)*out_len / (double)in_len);
 
 	gettimeofday(&start, NULL);
