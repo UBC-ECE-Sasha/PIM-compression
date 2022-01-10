@@ -78,19 +78,18 @@ static void update_token(struct out_buffer_context *output, U32 offset, BYTE tok
 		BYTE* aligned_read;
 		U32 aligned_offset = WINDOW_ALIGN(offset, 8);
 		aligned_read = (BYTE*) ALIGN(data_read, 8);
+		
 		/* Have read 8B into WRAM */
 		mram_read(&output->buffer[aligned_offset], aligned_read, 8);
 
 		offset &= 0x7;
-
-		printf("%d\n", aligned_read[offset]);
 
 		aligned_read[offset] = token_val;
 		
 		// Write the buffer back
 		mram_write(aligned_read, &output->buffer[aligned_offset], 8);
 	} else {
-		output->append_ptr[offset] = token_val;
+		output->append_ptr[offset-output->append_window] = token_val;
 	}	
 }
 
@@ -435,6 +434,7 @@ snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_co
 		if (len_final == 0)
 			len_final = OUT_BUFFER_LENGTH;
 
+		printf("%d\n", output->append_window);
 		dbg_printf("Writing window at: 0x%x (%u bytes)\n", output->append_window, len_final);
 		mram_write(output->append_ptr, &output->buffer[output->append_window], len_final);
 	}
