@@ -126,7 +126,7 @@ static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_leng
 		{
 			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-		
+			printf("update: %d \n", output->curr);
 			output->append_window += OUT_BUFFER_LENGTH;
 			curr_index = 0;
 		}
@@ -426,34 +426,11 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
             length += MINMATCH;
 
         safe_match_copy:
-            /* copy match within block */
-            cpy = output->curr + length;
 			printf("%d %d\n", length, offset);
 
-            if (offset<8) {
-				write_copy_dpu(output, 4, output->curr - match);
-                match += inc32table[offset];
-                write_copy_dpu(output, 4, output->curr - match);
-                match -= dec64table[offset];
-            } else {
-                write_copy_dpu(output, 8, output->curr - match);
-                match += 8;
-            }
+            
 
-            if (cpy > oend-MATCH_SAFEGUARD_DISTANCE) {
-                U32 const oCopyLimit = oend - (WILDCOPYLENGTH-1);
-                if (cpy > oend-LASTLITERALS) { goto _output_error; } /* Error : last LASTLITERALS bytes must be literals (uncompressed) */
-                if (output->curr < oCopyLimit) {
-					LZ4_wildCopy8(output, match, oCopyLimit);
-					match += oCopyLimit - output->curr;
-                    output->curr = oCopyLimit;
-                }
-                write_copy_dpu(output, cpy - output->curr, output->curr - match);
-            } else {
-                write_copy_dpu(output, 8, output->curr - match);
-                if (length > 16)  { LZ4_wildCopy8(output, match + 8, cpy); }
-            }
-			output->curr = cpy;
+			write_copy_dpu(output, length, offset);
 
         }
 		printf("%d %d\n", output->length, output->append_window);
