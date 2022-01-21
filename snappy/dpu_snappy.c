@@ -189,7 +189,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = snappy_decompress_dpu(input.buffer, input.length, output.buffer, &output.length);
+			status = snappy_decompress_dpu(input.curr, input.length, output.buffer, &output.length);
 		}
 		else
 		{
