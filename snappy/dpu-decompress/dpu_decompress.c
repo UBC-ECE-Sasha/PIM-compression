@@ -70,7 +70,6 @@ static U16 LZ4_readLE16(struct in_buffer_context *input)
 static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer_context *output, uint16_t len)
 {
 	uint32_t curr_index = output->curr - output->append_window;
-	printf("g %d %d %d\n", output->curr, output->append_window, len);
 	while (len)
 	{
 		// If we are past the window, write the current window back to MRAM and start a new one
@@ -78,7 +77,6 @@ static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer
 		{
 			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-			printf("curr_i %d %d\n", curr_index, output->append_window);
 			output->append_window += OUT_BUFFER_LENGTH;
 			curr_index = 0;
 		}
@@ -95,6 +93,7 @@ static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer
 	}
 }
 
+
 /**
  * Copy and append previous data to the output buffer. The data may
  * already be existing in the append buffer or read buffer in WRAM,
@@ -105,7 +104,7 @@ static void writer_append_dpu(struct in_buffer_context *input, struct out_buffer
  * @param offset: where to copy from, offset from the current output pointer
  * @return False if offset is invalid, True otherwise
  */
-static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_length, uint32_t offset)
+static bool write_copy_dpu(struct out_buffer_context *output, U32 copy_length, U32 offset)
 {
 	// We only copy previous data, not future data
 	if (offset > output->curr)
@@ -126,7 +125,6 @@ static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_leng
 		{
 			dbg_printf("Past EOB - writing back output %d\n", output->append_window);
 			mram_write(output->append_ptr, &output->buffer[output->append_window], OUT_BUFFER_LENGTH);
-			printf("update: %d \n", output->curr);
 			output->append_window += OUT_BUFFER_LENGTH;
 			curr_index = 0;
 		}
@@ -154,6 +152,27 @@ static bool write_copy_dpu(struct out_buffer_context *output, uint32_t copy_leng
 	
 	return true;
 }
+
+
+/**
+ * Copy and append data from the input buffer to the output buffer without advancing seqread,
+ * as we are just copying a match that overlaps into upcoming input data.
+ *
+ * @param output: holds output buffer information
+ * @param offset: offset from current output ptr
+ * @param matchlength: number of bytes to copy
+ */
+static void write_overlap(struct out_buffer_context *output, U32 offset, U32 matchlength)
+{
+	// First we copy up to the 
+	U32 to_write = matchlength;
+	while(to_write > offset) {
+		write_copy_dpu(output, offset, offset);
+		to_write -= offset;
+	}
+	write_copy_dpu(output, to_write, offset);
+}
+
 
 /* customized variant of memcpy, which can overwrite up to 8 bytes beyond dstEnd */
 static inline
@@ -265,6 +284,7 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 		/* Fast Loop : decode sequences as long as output < iend-FASTLOOP_SAFE_DISTANCE */
 		while (1) {
 			token = READ_BYTE(input);
+			printf("%d %d\n", token, input->curr);
 			length = token >> ML_BITS;
 
 			if (length == RUN_MASK) {
@@ -283,12 +303,12 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 				writer_append_dpu(input, output, length);
 			}
 
-			//printf("%d %d\n", length, input->curr);
+			printf("%d %d\n", length, input->curr);
 
 			/* get offset */
 			offset = LZ4_readLE16(input); 
 			match = output->curr - offset;
-			//printf("%d\n", offset);
+			printf("%d\n", offset);
 
 			/* get matchlength */
 			length = token & ML_MASK;
@@ -309,13 +329,11 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 				}
 			}
 
-			//printf("%d\n", length);
+			printf("%d\n", length);
 			
 			/* Match may extend past output->curr, so we may have to append from input */
 			if ((int)(length - offset) > 0) {
-				//if (length - offset < 0) write_copy_dpu(output, length, offset); 
-				write_copy_dpu(output, offset, offset);
-				writer_append_dpu(input, output, length - offset);
+				write_overlap(output, offset, length);
 			} else {
 				//LZ4_wildCopy32(output, match, cpy);
 				write_copy_dpu(output, length, offset);
@@ -326,9 +344,9 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
 		/* Main Loop : decode remaining sequences where output < FASTLOOP_SAFE_DISTANCE */
 		while(1) {
 			token = READ_BYTE(input);
-			printf("token: %d %d %d\n", token, input->curr, output->curr);
+			//printf("token: %d %d %d\n", token, input->curr, output->curr);
 			length = token >> ML_BITS; /* literal length */
-			printf("%d\n", length);
+			//printf("%d\n", length);
 			U32 op = output->curr;
 			U32 ip = input->curr;
 			            /* A two-stage shortcut for the most common case:
@@ -351,13 +369,13 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
                 length = token & ML_MASK; /* match length */
                 offset = LZ4_readLE16(input);
                 match = output->curr - offset;
-				printf("%d %d %d %d\n", length, offset, output->curr, input->curr);
+				//printf("%d %d %d %d\n", length, offset, output->curr, input->curr);
                 /* Do not deal with overlapping matches. */
                 if ( (length != ML_MASK)
                   && (offset >= 8)
                   && ( match >= dst) ) {
                     /* Copy the match. */
-					printf("%d\n", output->curr);
+					//printf("%d\n", output->curr);
 					write_copy_dpu(output, length + MINMATCH, offset);
 					/* Both stages worked, load the next token. */
                     continue;
@@ -417,7 +435,7 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
             length = token & ML_MASK;
 
     _copy_match:
-			printf("%d\n", length);
+			//printf("%d\n", length);
 			if (length == ML_MASK) {
               variable_length_error error = ok;
               length += read_variable_length(input, iend - LASTLITERALS + 1, 1, 0, &error);
@@ -426,14 +444,12 @@ snappy_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_
             length += MINMATCH;
 
         safe_match_copy:
-			printf("%d %d\n", length, offset);
-
-            
+			//printf("%d %d\n", length, offset);
 
 			write_copy_dpu(output, length, offset);
 
         }
-		printf("%d %d\n", output->length, output->append_window);
+		//printf("%d %d\n", output->length, output->append_window);
 		// Write out the final buffer
 		if (output->append_window < output->length) {
 			uint32_t len_final = output->length % OUT_BUFFER_LENGTH;

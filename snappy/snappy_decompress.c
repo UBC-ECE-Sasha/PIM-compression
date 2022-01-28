@@ -383,6 +383,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		/* Fast Loop : decode sequences as long as output < iend-FASTLOOP_SAFE_DISTANCE */
 		while (1) {
 			token = *ip++;
+			printf("token: %d, ip: %d\n", *(ip-1), ip - src);
 			length = token >> ML_BITS;
 
 			if (length == RUN_MASK) {
@@ -404,11 +405,12 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 
 				ip += length; op = cpy;
 			}
+			printf("length: %d ip: %d\n", length, ip - src);
 
 			/* get offset */
 			offset = LZ4_readLE16(ip); ip+=2;
 			match = op - offset;
-			//printf("offset: %d\n", offset);
+			printf("offset: %d\n", offset);
 
 			/* get matchlength */
 			length = token & ML_MASK;
@@ -428,6 +430,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 					goto safe_match_copy;
 				}
 			}
+			printf("matchlength: %d\n", length);
 			
 			/* copy match within block */
 			cpy = op + length;
@@ -444,9 +447,9 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		/* Main Loop : decode remaining sequences where output < FASTLOOP_SAFE_DISTANCE */
 		while(1) {
 			token = *ip++;
-			printf("token: %d, curr: %d, output: %d\n", token, ip - src, op - dst);	
+			//printf("token: %d, curr: %d, output: %d\n", token, ip - src, op - dst);	
 			length = token >> ML_BITS; /* literal length */
-			printf("%d\n", length);
+			//printf("%d\n", length);
 
 			            /* A two-stage shortcut for the most common case:
              * 1) If the literal length is 0..14, and there is enough space,
@@ -469,13 +472,13 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
                 length = token & ML_MASK; /* match length */
                 offset = LZ4_readLE16(ip); ip += 2;
                 match = op - offset;
-				printf("length: %d offset: %d output: %d, input: %d\n", length, offset, op - dst, ip-src);
+				//printf("length: %d offset: %d output: %d, input: %d\n", length, offset, op - dst, ip-src);
                 /* Do not deal with overlapping matches. */
                 if ( (length != ML_MASK)
                   && (offset >= 8)
                   && ( match >= dst) ) {
                     /* Copy the match. */
-					printf("%d\n", op-dst);
+					//printf("%d\n", op-dst);
 					LZ4_memcpy(op + 0, match + 0, 8);
                     LZ4_memcpy(op + 8, match + 8, 8);
                     LZ4_memcpy(op +16, match +16, 2);
@@ -539,7 +542,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
             length = token & ML_MASK;
 
     _copy_match:
-			printf("length: %d\n", length);
+			//printf("length: %d\n", length);
 			if (length == ML_MASK) {
               variable_length_error error = ok;
               length += read_variable_length(&ip, iend - LASTLITERALS + 1, 1, 0, &error);
@@ -550,7 +553,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		safe_match_copy:
             /* copy match within block */
             cpy = op + length;
-			printf("length: %d, offset: %d\n", length, offset);
+			//printf("length: %d, offset: %d\n", length, offset);
             if (offset<8) {
                 LZ4_write32(op, 0);   /* silence msan warning when offset==0 */
                 op[0] = match[0];
