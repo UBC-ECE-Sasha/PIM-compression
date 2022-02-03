@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "snappy_compress.h"
+#include "lz4_compress.h"
 
 #define DPU_COMPRESS_PROGRAM "dpu-compress/compress.dpu"
 #define TOTAL_NR_TASKLETS (NR_DPUS * NR_TASKLETS)
@@ -34,22 +34,22 @@
 
 static unsigned LZ4_isLittleEndian(void)
 {
-    const union { U32 u; BYTE c[4]; } one = { 1 };   /* don't use static : performance detrimental */
+    const union { uint32_t u; uint8_t c[4]; } one = { 1 };   /* don't use static : performance detrimental */
     return one.c[0];
 }
 
 /* __pack instructions are safer, but compiler specific, hence potentially problematic for some compilers */
 /* currently only defined for gcc and icc */
-typedef union { U16 u16; U32 u32; reg_t uArch; } __attribute__((packed)) unalign;
+typedef union { uint16_t u16; uint32_t uint32_t; uint64_t uArch; } __attribute__((packed)) unalign;
 
-static U16 LZ4_read16(const void* ptr) { return ((const unalign*)ptr)->u16; }
-static U32 LZ4_read32(const void* ptr) { return ((const unalign*)ptr)->u32; }
-static reg_t LZ4_read_ARCH(const void* ptr) { return ((const unalign*)ptr)->uArch; }
+static uint16_t LZ4_read16(const void* ptr) { return ((const unalign*)ptr)->u16; }
+static uint32_t LZ4_read32(const void* ptr) { return ((const unalign*)ptr)->uint32_t; }
+static uint64_t LZ4_read_ARCH(const void* ptr) { return ((const unalign*)ptr)->uArch; }
 
-static void LZ4_write16(void* memPtr, U16 value) { ((unalign*)memPtr)->u16 = value; }
-static void LZ4_write32(void* memPtr, U32 value) { ((unalign*)memPtr)->u32 = value; }
+static void LZ4_write16(void* memPtr, uint16_t value) { ((unalign*)memPtr)->u16 = value; }
+static void LZ4_write32(void* memPtr, uint32_t value) { ((unalign*)memPtr)->uint32_t = value; }
 
-static const U32 LZ4_skipTrigger = 6;
+static const uint32_t LZ4_skipTrigger = 6;
 
 /*-************************************
 *  Error detection
@@ -59,7 +59,7 @@ static const U32 LZ4_skipTrigger = 6;
 #  endif
 
 
-static inline unsigned LZ4_NbCommonBytes (reg_t val)
+static inline unsigned LZ4_NbCommonBytes (uint64_t val)
 {
     assert(val != 0);
     if (LZ4_isLittleEndian()) {
@@ -75,28 +75,28 @@ static inline unsigned LZ4_NbCommonBytes (reg_t val)
 #         endif
 #       elif defined(_MSC_VER) && defined(_WIN64) && !defined(LZ4_FORCE_SW_BITCOUNT)
             unsigned long r = 0;
-            _BitScanForward64(&r, (U64)val);
+            _BitScanForward64(&r, (uint64_t)val);
             return (unsigned)r >> 3;
 #       elif (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
                             ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
                                         !defined(LZ4_FORCE_SW_BITCOUNT)
-            return (unsigned)__builtin_ctzll((U64)val) >> 3;
+            return (unsigned)__builtin_ctzll((uint64_t)val) >> 3;
 #       else
-            const U64 m = 0x0101010101010101ULL;
+            const uint64_t m = 0x0101010101010101ULL;
             val ^= val - 1;
-            return (unsigned)(((U64)((val & (m - 1)) * m)) >> 56);
+            return (unsigned)(((uint64_t)((val & (m - 1)) * m)) >> 56);
 #       endif
         } else /* 32 bits */ {
 #       if defined(_MSC_VER) && (_MSC_VER >= 1400) && !defined(LZ4_FORCE_SW_BITCOUNT)
             unsigned long r;
-            _BitScanForward(&r, (U32)val);
+            _BitScanForward(&r, (uint32_t)val);
             return (unsigned)r >> 3;
 #       elif (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
                             ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
                         !defined(__TINYC__) && !defined(LZ4_FORCE_SW_BITCOUNT)
-            return (unsigned)__builtin_ctz((U32)val) >> 3;
+            return (unsigned)__builtin_ctz((uint32_t)val) >> 3;
 #       else
-            const U32 m = 0x01010101;
+            const uint32_t m = 0x01010101;
             return (unsigned)((((val - 1) ^ val) & (m - 1)) * m) >> 24;
 #       endif
         }
@@ -105,7 +105,7 @@ static inline unsigned LZ4_NbCommonBytes (reg_t val)
 #       if (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
                             ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
                         !defined(__TINYC__) && !defined(LZ4_FORCE_SW_BITCOUNT)
-            return (unsigned)__builtin_clzll((U64)val) >> 3;
+            return (unsigned)__builtin_clzll((uint64_t)val) >> 3;
 #       else
 #if 1
             /* this method is probably faster,
@@ -120,14 +120,14 @@ static inline unsigned LZ4_NbCommonBytes (reg_t val)
                 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
                 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0,
             };
-            U64 const mask = 0x0101010101010101ULL;
-            U64 const t = (((val >> 8) - mask) | val) & mask;
+            uint64_t const mask = 0x0101010101010101ULL;
+            uint64_t const t = (((val >> 8) - mask) | val) & mask;
             return ctz7_tab[(t * 0x0080402010080402ULL) >> 57];
 #else
             /* this method doesn't consume memory space like the previous one,
              * but it contains several branches,
              * that may end up slowing execution */
-            static const U32 by32 = sizeof(val)*4;  /* 32 on 64 bits (goal), 16 on 32 bits.
+            static const uint32_t by32 = sizeof(val)*4;  /* 32 on 64 bits (goal), 16 on 32 bits.
             Just to avoid some static analyzer complaining about shift by 32 on 32-bits target.
             Note that this code path is never triggered in 32-bits mode. */
             unsigned r;
@@ -141,7 +141,7 @@ static inline unsigned LZ4_NbCommonBytes (reg_t val)
 #       if (defined(__clang__) || (defined(__GNUC__) && ((__GNUC__ > 3) || \
                             ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 4))))) && \
                                         !defined(LZ4_FORCE_SW_BITCOUNT)
-            return (unsigned)__builtin_clz((U32)val) >> 3;
+            return (unsigned)__builtin_clz((uint32_t)val) >> 3;
 #       else
             val >>= 8;
             val = ((((val + 0x00FFFF00) | 0x00FFFFFF) + val) |
@@ -152,13 +152,13 @@ static inline unsigned LZ4_NbCommonBytes (reg_t val)
     }
 }
 
-#define STEPSIZE sizeof(reg_t)
-static inline unsigned LZ4_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pInLimit)
+#define STEPSIZE sizeof(uint64_t)
+static inline unsigned LZ4_count(const uint8_t* pIn, const uint8_t* pMatch, const uint8_t* pInLimit)
 {
-    const BYTE* const pStart = pIn;
+    const uint8_t* const pStart = pIn;
 
     if (pIn < pInLimit-(STEPSIZE-1)) {
-        reg_t const diff = LZ4_read_ARCH(pMatch) ^ LZ4_read_ARCH(pIn);
+        uint64_t const diff = LZ4_read_ARCH(pMatch) ^ LZ4_read_ARCH(pIn);
         if (!diff) {
             pIn+=STEPSIZE; pMatch+=STEPSIZE;
         } else {
@@ -166,7 +166,7 @@ static inline unsigned LZ4_count(const BYTE* pIn, const BYTE* pMatch, const BYTE
     }   }
 
     while (pIn < pInLimit-(STEPSIZE-1)) {
-        reg_t const diff = LZ4_read_ARCH(pMatch) ^ LZ4_read_ARCH(pIn);
+        uint64_t const diff = LZ4_read_ARCH(pMatch) ^ LZ4_read_ARCH(pIn);
         if (!diff) { pIn+=STEPSIZE; pMatch+=STEPSIZE; continue; }
         pIn += LZ4_NbCommonBytes(diff);
         return (unsigned)(pIn - pStart);
@@ -192,22 +192,22 @@ static inline int32_t log2_floor(uint32_t n)
 /* customized variant of memcpy, which can overwrite up to 8 bytes beyond dstEnd */
 static inline void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
 {
-    BYTE* d = (BYTE*)dstPtr;
-    const BYTE* s = (const BYTE*)srcPtr;
-    BYTE* const e = (BYTE*)dstEnd;
+    uint8_t* d = (uint8_t*)dstPtr;
+    const uint8_t* s = (const uint8_t*)srcPtr;
+    uint8_t* const e = (uint8_t*)dstEnd;
 
     do { LZ4_memcpy(d,s,8); d+=8; s+=8; } while (d<e);
 }
 
 
-static inline void LZ4_writeLE16(void* memPtr, U16 value)
+static inline void LZ4_writeLE16(void* memPtr, uint16_t value)
 {
     if (LZ4_isLittleEndian()) {
         LZ4_write16(memPtr, value);
     } else {
-        BYTE* p = (BYTE*)memPtr;
-        p[0] = (BYTE) value;
-        p[1] = (BYTE)(value>>8);
+        uint8_t* p = (uint8_t*)memPtr;
+        p[0] = (uint8_t) value;
+        p[1] = (uint8_t)(value>>8);
     }
 }
 
@@ -219,7 +219,7 @@ static inline void LZ4_writeLE16(void* memPtr, U16 value)
         return : maximum output size in a "worst case" scenario
               or 0, if input size is incorrect (too large or negative)
 */
-static inline uint32_t snappy_max_compressed_length(uint32_t input_length) {
+static inline uint32_t lz4_max_compressed_length(uint32_t input_length) {
 	if (input_length > 0) 
 		return input_length + ((input_length)/255) + 16;
 	else
@@ -383,7 +383,7 @@ static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_li
 
 
 /**
- * Perform Snappy compression on a block of input data, and save the compressed
+ * Perform LZ4 compression on a block of input data, and save the compressed
  * data to the output buffer.
  *
  * @param input: holds input buffer information
@@ -395,17 +395,17 @@ static inline int32_t find_match_length(uint8_t *s1, uint8_t *s2, uint8_t *s2_li
 static int compress_block(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t input_size, uint16_t *table, uint32_t table_size)
 {
 	const int32_t shift = 32 - log2_floor(table_size);
-	BYTE* ip = (BYTE*) input->curr;	
-	char* const dest = output->curr;	
-	BYTE* op = (BYTE*) output->curr;
-	const BYTE* base = (const BYTE*) input -> curr;	
+	uint8_t* ip = (uint8_t*) input->curr;	
+	uint8_t* dest = output->curr;	
+	uint8_t* op = (uint8_t*) output->curr;
+	uint8_t* base = input -> curr;	
 
 
-	const BYTE* lowLimit = (const BYTE*) input-> curr;
-	const BYTE* const iend = ip + input_size;	
-	const BYTE* matchlimit = iend - LASTLITERALS;
-	const BYTE* const mflimitPlusOne = iend - MFLIMIT + 1;
-	const BYTE* anchor = (const BYTE*) ip;
+	const uint8_t* lowLimit = (const uint8_t*) input-> curr;
+	const uint8_t* const iend = ip + input_size;	
+	const uint8_t* matchlimit = iend - LASTLITERALS;
+	const uint8_t* const mflimitPlusOne = iend - MFLIMIT + 1;
+	uint8_t* anchor = ip;
 
 	//TODO: Add checks for input of size 0, input < input_margin_bytes...
 
@@ -413,18 +413,18 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 
 	/* First Byte */
 	table[hash(ip, shift)] = ip - base;
-	U32 forwardH = hash(++ip, shift);
+	uint32_t forwardH = hash(++ip, shift);
 	
 	for ( ; ; ) {
-		BYTE* match;
-		BYTE* token;
+		uint8_t* match;
+		uint8_t* token;
 
-		BYTE* forwardIp = ip;
+		uint8_t* forwardIp = ip;
 		int step = 1;
 		int searchMatchNb = 1 << LZ4_skipTrigger;
-		printf("%d\n", ip-base);
+		
 		do {
-			U32 h = forwardH;
+			uint32_t h = forwardH;
 			ip = forwardIp;
 			forwardIp += step;
 			step = (searchMatchNb++ >> LZ4_skipTrigger);
@@ -434,32 +434,23 @@ static int compress_block(struct host_buffer_context *input, struct host_buffer_
 
 			match = base + table[h];
 			forwardH = hash(forwardIp, shift);		
-			if (ip-base == 76 || ip-base == 135 || ip - base == 222) {
-				printf("%x\n", read_uint32(ip));
-				printf("%x\n", read_uint32(match));
-				printf("%x\n", table[h]);
-				printf("%d\n", h);
-			}
 			table[h] = ip - base;	
 
 		} while (read_uint32(match) != read_uint32(ip));
-		printf("%d \n", ip - base);
-		printf("%d \n", match - base);
 
 		while (((ip>anchor) & (match > lowLimit)) && (ip[-1]==match[-1])) { ip--; match--; }
 
 		/* Encode Literals*/
 		{	unsigned const litLength = (unsigned) (ip - anchor);
-			printf("litLength: %d, op: %d \n", litLength, op - output->curr);
 			token = op++;
 			
 			if (litLength >= RUN_MASK) {
 				int len = (int) (litLength - RUN_MASK);
 				*token = (RUN_MASK<<ML_BITS);
 				for(; len >= 255 ; len-=255) *op++ = 255;
-				*op++ = (BYTE) len;
+				*op++ = (uint8_t) len;
 			}
-			else *token = (BYTE)(litLength<<ML_BITS);
+			else *token = (uint8_t)(litLength<<ML_BITS);
 
 			/* Copy Literals */
 			LZ4_wildCopy8(op, anchor, op+litLength);
@@ -477,16 +468,13 @@ _next_match:
 
 		/* Encode Offset */
 		assert(ip-match <= LZ4_DISTANCE_MAX);
-		printf("offset: %d\n", ip-match);
-		LZ4_writeLE16(op, (U16)(ip - match)); op+=2;
+		LZ4_writeLE16(op, (uint16_t)(ip - match)); op+=2;
 
 		/* Encode MatchLength */
 		{	unsigned matchCode;
 
 			matchCode = LZ4_count(ip+MINMATCH, match+MINMATCH, matchlimit);
             ip += (size_t)matchCode + MINMATCH;
-
-			printf("matchlength: %d\n", matchCode + MINMATCH);
 
 			if (matchCode >= ML_MASK) {
 				*token += ML_MASK;
@@ -499,11 +487,10 @@ _next_match:
 					matchCode -= 4*255;
 				}
 				op += matchCode / 255;
-				*op++ = (BYTE)(matchCode % 255);
+				*op++ = (uint8_t)(matchCode % 255);
 			} else
-				*token += (BYTE)(matchCode);
+				*token += (uint8_t)(matchCode);
 		}
-		printf("token_val: %d\n", *token);
 		
 		anchor = ip;
 
@@ -518,7 +505,7 @@ _next_match:
 		table[hash(ip, shift)] = ip - base;
 		if ( (match+LZ4_DISTANCE_MAX >= ip) 
 		&& (read_uint32(match) == read_uint32(ip)) )
-		{ printf("here***********\n"); token=op++; *token=0; goto _next_match; }
+		{ token=op++; *token=0; goto _next_match; }
 
 		/* Prepare next loop */
 		forwardH = hash(++ip, shift);
@@ -532,9 +519,9 @@ _last_literals:
 			size_t accumulator = lastRun - RUN_MASK;
 			*op++ = RUN_MASK << ML_BITS;
 			for(; accumulator >= 255 ; accumulator -=255) *op++ = 255;
-			*op++ = (BYTE) accumulator;
+			*op++ = (uint8_t) accumulator;
 		} else {
-			*op++ = (BYTE)(lastRun<<ML_BITS);
+			*op++ = (uint8_t)(lastRun<<ML_BITS);
 		}
 		LZ4_memcpy(op, anchor, lastRun);
 		ip = anchor + lastRun;
@@ -543,7 +530,7 @@ _last_literals:
 
 	output->curr = op;
 
-	return (int)(((char*)op) - dest); 
+	return (int)((op) - dest); 
 }
 			
 /*************** Public Functions *******************/
@@ -554,7 +541,7 @@ void setup_compression(struct host_buffer_context *input, struct host_buffer_con
 	struct timeval end;
 	gettimeofday(&start, NULL);
 
-	uint32_t max_compressed_length = snappy_max_compressed_length(input->length);
+	uint32_t max_compressed_length = lz4_max_compressed_length(input->length);
 	output->buffer = malloc(sizeof(uint8_t) * max_compressed_length);
 	output->curr = output->buffer;
 	output->length = 0;
@@ -563,7 +550,7 @@ void setup_compression(struct host_buffer_context *input, struct host_buffer_con
 	runtime->pre = get_runtime(&start, &end);
 }
 
-snappy_status snappy_compress_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size)
+lz4_status lz4_compress_host(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size)
 {
 	// Allocate the hash table for compression
 	uint16_t *table = malloc(sizeof(uint16_t) * MAX_HASH_TABLE_SIZE);
@@ -589,10 +576,10 @@ snappy_status snappy_compress_host(struct host_buffer_context *input, struct hos
 	// Update output length
 	output->length = (output->curr - output->buffer);
 
-	return SNAPPY_OK;
+	return LZ4_OK;
 }
 
-snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len, void *wrkmem)
+lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len, void *wrkmem)
 {
 	// Set block size
 	uint32_t block_size = BLOCK_SIZE;
@@ -625,7 +612,7 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 		// If we have reached the next tasks's boundary, log the offset
 		if (dpu_blocks == (input_blocks_per_task * task_idx)) {
 			input_block_offset[dpu_idx][task_idx] = i;
-			output_offset[dpu_idx][task_idx] = ALIGN(snappy_max_compressed_length(block_size * dpu_blocks), 64);
+			output_offset[dpu_idx][task_idx] = ALIGN(lz4_max_compressed_length(block_size * dpu_blocks), 64);
 			task_idx++;
 		}
 
@@ -727,15 +714,15 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 	if (ret != 0)
 	{
 		DPU_ASSERT(dpu_free(dpus));
-		return SNAPPY_INVALID_INPUT;
+		return LZ4_INVALID_INPUT;
 	}
 
 	// Open the output file and write the header
-	FILE *fout = fopen("compressed.snappy", "w");
+	FILE *fout = fopen("compressed.lz4", "w");
 	fwrite(out, sizeof(uint8_t), *out_len, fout);
 	
 	// Deallocate the DPUs
-	uint32_t max_output_length = snappy_max_compressed_length(input_blocks_per_dpu * block_size);
+	uint32_t max_output_length = lz4_max_compressed_length(input_blocks_per_dpu * block_size);
 	dpu_idx = 0;
 	DPU_RANK_FOREACH(dpus, dpu_rank) {
 		uint32_t starting_dpu_idx = dpu_idx;
@@ -809,7 +796,7 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 		}
 	}
 
-	printf("Compressed %ld bytes to: %s\n", *out_len, "compressed.snappy");	
+	printf("Compressed %ld bytes to: %s\n", *out_len, "compressed.lz4");	
 	printf("Compression ratio: %f\n", 1 - (double)*out_len / (double)in_len);
 
 	gettimeofday(&start, NULL);
@@ -818,5 +805,5 @@ snappy_status snappy_compress_dpu(unsigned char *in, size_t in_len, unsigned cha
 
 	fclose(fout);
 
-	return SNAPPY_OK;
+	return LZ4_OK;
 }

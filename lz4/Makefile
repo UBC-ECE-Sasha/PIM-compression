@@ -11,7 +11,7 @@ endif
 NR_DPUS = 1
 NR_TASKLETS = 1
 
-SOURCE = dpu_snappy.c snappy_compress.c snappy_decompress.c
+SOURCE = dpu_lz4.c lz4_compress.c lz4_decompress.c
 
 .PHONY: default all dpu host clean tags
 
@@ -20,7 +20,7 @@ default: all
 all: dpu host
 
 clean:
-	$(RM) dpu_snappy
+	$(RM) dpu_lz4
 	$(MAKE) -C dpu-decompress $@
 	$(MAKE) -C dpu-compress $@
 
@@ -28,18 +28,18 @@ dpu:
 	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-decompress
 	DEBUG=$(DEBUG) NR_DPUS=$(NR_DPUS) NR_TASKLETS=$(NR_TASKLETS) $(MAKE) -C dpu-compress
 
-host: dpu_snappy
+host: dpu_lz4
 	
-dpu_snappy: $(SOURCE)
+dpu_lz4: $(SOURCE)
 	$(CC) $(CFLAGS) -DNR_DPUS=$(NR_DPUS) -DNR_TASKLETS=$(NR_TASKLETS) $^ -o $@ $(DPU_OPTS)
 
 tags:
 	ctags -R -f tags . /usr/share/upmem/include
 
 
-TEST_SNAPPY = $(wildcard ../test/*.snappy)
-TEST_HOST_VERIFIED = $(patsubst ../test/%.snappy,test/%.host_verified,$(TEST_SNAPPY))
-TEST_DPU_VERIFIED = $(patsubst ../test/%.snappy,test/%.dpu_verified,$(TEST_SNAPPY))
+TEST_LZ4 = $(wildcard ../test/*.lz4)
+TEST_HOST_VERIFIED = $(patsubst ../test/%.lz4,test/%.host_verified,$(TEST_LZ4))
+TEST_DPU_VERIFIED = $(patsubst ../test/%.lz4,test/%.dpu_verified,$(TEST_LZ4))
 
 .PHONY: test test_dpu test_host
 test: test_host test_dpu
@@ -51,10 +51,10 @@ test/:
 
 # alternative diff command:
 # bash -c "diff <(xxd test/$*.host_output) <(xxd ../test/$*.txt)"
-test/%.host_verified: ../test/%.snappy ../test/%.txt all
-	./dpu_snappy -i $< -o test/$*.host_uncompressed 2>&1 | tee test/$*.host_output
+test/%.host_verified: ../test/%.lz4 ../test/%.txt all
+	./dpu_lz4 -i $< -o test/$*.host_uncompressed 2>&1 | tee test/$*.host_output
 	cmp test/$*.host_uncompressed ../test/$*.txt
 
-test/%.dpu_verified: ../test/%.snappy ../test/%.txt all
-	./dpu_snappy -d -i $< -o test/$*.dpu_uncompressed 2>&1 | tee test/$*.dpu_output
+test/%.dpu_verified: ../test/%.lz4 ../test/%.txt all
+	./dpu_lz4 -d -i $< -o test/$*.dpu_uncompressed 2>&1 | tee test/$*.dpu_output
 	cmp test/$*.dpu_uncompressed ../test/$*.txt

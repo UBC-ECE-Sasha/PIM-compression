@@ -1,5 +1,5 @@
-#ifndef _DPU_SNAPPY_H_
-#define _DPU_SNAPPY_H_
+#ifndef _DPU_LZ4_H_
+#define _DPU_LZ4_H_
 
 #include "common.h"
 #include <sys/time.h>
@@ -8,24 +8,15 @@
 #define BULK_XFER
 
 #define GET_ELEMENT_TYPE(_tag)  (_tag & BITMASK(2))
-#define GET_LENGTH_1_BYTE(_tag) ((_tag >> 2) & BITMASK(3))
-#define GET_OFFSET_1_BYTE(_tag) ((_tag >> 5) & BITMASK(3))
-#define GET_LENGTH_2_BYTE(_tag) ((_tag >> 2) & BITMASK(6))
+#define GET_LENGTH_1_uint8_t(_tag) ((_tag >> 2) & BITMASK(3))
+#define GET_OFFSET_1_uint8_t(_tag) ((_tag >> 5) & BITMASK(3))
+#define GET_LENGTH_2_uint8_t(_tag) ((_tag >> 2) & BITMASK(6))
 
 #define ALIGN_LONG(_p, _width) (((long)_p + (_width-1)) & (0-_width))
 
 // Max length of the input and output files
 #define MAX_FILE_LENGTH MEGABYTE(30)
 #define BLOCK_SIZE 4*1024
-
-/* Types */
-typedef uint8_t BYTE;
-typedef uint16_t U16;
-typedef uint32_t U32;
-typedef uint64_t U64;
-typedef uintptr_t uptrval;
-
-typedef U64 reg_t;
 
 /* LZ4 constants */
 #define MINMATCH 		 4
@@ -43,12 +34,12 @@ typedef U64 reg_t;
 
 // Return values
 typedef enum {
-	SNAPPY_OK = 0,				// Success code
-	SNAPPY_INVALID_INPUT,		// Input file has an invalid format
-	SNAPPY_BUFFER_TOO_SMALL		// Input or output file size is too large
-} snappy_status;
+	LZ4_OK = 0,				// Success code
+	LZ4_INVALID_INPUT,		// Input file has an invalid format
+	LZ4_BUFFER_TOO_SMALL		// Input or output file size is too large
+} lz4_status;
 
-// Snappy tag types
+// LZ4 tag types
 enum element_type
 {
 	EL_TYPE_LITERAL,
@@ -83,5 +74,5 @@ struct program_runtime {
  */
 double get_runtime(struct timeval *start, struct timeval *end);
 
-#endif	/* _DPU_SNAPPY_H_ */
+#endif	/* _DPU_LZ4_H_ */
 

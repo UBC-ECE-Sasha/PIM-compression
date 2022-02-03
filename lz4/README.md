@@ -1,10 +1,10 @@
-# PIM-compression/snappy
+# PIM-compression/lz4
 
-DPU implementation of Snappy compression and decompression. 
+DPU implementation of LZ4 compression and decompression. 
 
-The implementation in this repository is highly based off of the C port of Google's Snappy compressor, ported by [Andi Kleen](http://github.com/andikleen/snappy-c), with two important alterations:
+The implementation in this repository is highly based off of the C port of Google's LZ4 compressor, ported by [Andi Kleen](http://github.com/andikleen/lz4-c), with two important alterations:
 
-* Block input size used by Snappy is now configurable (up to 64KB), rather than the set 64KB size in the original code. 
+* Block input size used by LZ4 is now configurable (up to 64KB), rather than the set 64KB size in the original code. 
 * Format of compressed file is changed to allow for multi-threaded decompression:
   * __Original Format:__ compressed file consists of the decompressed length followed by the compressed data. During compression, the input file is broken into 64KB chunks and each chunk is compressed separately. This results in independent compressed blocks in the output file. However, it is not possible to determine where each compressed block starts and ends, as there is no identifier for the start of a new block or indication for how long each compessed block is.
 	```
@@ -58,7 +58,7 @@ make test_dpu
 
 ### Run specific test:
 ```
-./dpu\_snappy [-d] [-c] [-b <block_size>] -i <input file> [-o <output file>]
+./dpu\_lz4 [-d] [-c] [-b <block_size>] -i <input file> [-o <output file>]
 ```
 
 * Use the `-d` option to run the DPU program. Otherwise the program is run on host.

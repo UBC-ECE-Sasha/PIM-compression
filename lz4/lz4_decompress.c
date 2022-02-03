@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "snappy_decompress.h"
+#include "lz4_decompress.h"
 
 #define DPU_DECOMPRESS_PROGRAM "dpu-decompress/decompress.dpu"
 #define TOTAL_NR_TASKLETS (NR_DPUS * NR_TASKLETS)
@@ -15,11 +15,11 @@
 
 /* __pack instructions are safer, but compiler specific, hence potentially problematic for some compilers */
 /* currently only defined for gcc and icc */
-typedef union { U16 u16; U32 u32; reg_t uArch; } __attribute__((packed)) unalign;
+typedef union { uint16_t u16; uint32_t uint32_t; uint64_t uArch; } __attribute__((packed)) unalign;
 
-static U16 LZ4_read16(const void* ptr) { return ((const unalign*)ptr)->u16; }
+static uint16_t LZ4_read16(const void* ptr) { return ((const unalign*)ptr)->u16; }
 
-static void LZ4_write32(void* memPtr, U32 value) { ((unalign*)memPtr)->u32 = value; }
+static void LZ4_write32(void* memPtr, uint32_t value) { ((unalign*)memPtr)->uint32_t = value; }
 
 static const unsigned inc32table[8] = {0, 1, 2,  1,  0,  4, 4, 4};
 static const int      dec64table[8] = {0, 0, 0, -1, -4,  1, 2, 3};
@@ -30,9 +30,9 @@ static const int      dec64table[8] = {0, 0, 0, -1, -4,  1, 2, 3};
 static inline
 void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
 {
-    BYTE* d = (BYTE*)dstPtr;
-    const BYTE* s = (const BYTE*)srcPtr;
-    BYTE* const e = (BYTE*)dstEnd;
+    uint8_t* d = (uint8_t*)dstPtr;
+    const uint8_t* s = (const uint8_t*)srcPtr;
+    uint8_t* const e = (uint8_t*)dstEnd;
 
     do { LZ4_memcpy(d,s,8); d+=8; s+=8; } while (d<e);
 }
@@ -40,23 +40,23 @@ void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
 
 static unsigned LZ4_isLittleEndian(void)
 {
-    const union { U32 u; BYTE c[4]; } one = { 1 };   /* don't use static : performance detrimental */
+    const union { uint32_t u; uint8_t c[4]; } one = { 1 };   /* don't use static : performance detrimental */
     return one.c[0];
 }
 
-static U16 LZ4_readLE16(const void* memPtr)
+static uint16_t LZ4_readLE16(const void* memPtr)
 {
     if (LZ4_isLittleEndian()) {
         return LZ4_read16(memPtr);
     } else {
-        const BYTE* p = (const BYTE*)memPtr;
-        return (U16)((U16)p[0] + (p[1]<<8));
+        const uint8_t* p = (const uint8_t*)memPtr;
+        return (uint16_t)((uint16_t)p[0] + (p[1]<<8));
     }
 }
 
 
 static inline void
-LZ4_memcpy_using_offset_base(BYTE* dstPtr, const BYTE* srcPtr, BYTE* dstEnd, const size_t offset)
+LZ4_memcpy_using_offset_base(uint8_t* dstPtr, const uint8_t* srcPtr, uint8_t* dstEnd, const size_t offset)
 {
     if (offset < 8) {
         LZ4_write32(dstPtr, 0);   /* silence an msan warning when offset==0 */
@@ -83,9 +83,9 @@ LZ4_memcpy_using_offset_base(BYTE* dstPtr, const BYTE* srcPtr, BYTE* dstEnd, con
 static inline void
 LZ4_wildCopy32(void* dstPtr, const void* srcPtr, void* dstEnd)
 {
-    BYTE* d = (BYTE*)dstPtr;
-    const BYTE* s = (const BYTE*)srcPtr;
-    BYTE* const e = (BYTE*)dstEnd;
+    uint8_t* d = (uint8_t*)dstPtr;
+    const uint8_t* s = (const uint8_t*)srcPtr;
+    uint8_t* const e = (uint8_t*)dstEnd;
 
     do { LZ4_memcpy(d,s,16); LZ4_memcpy(d+16,s+16,16); d+=32; s+=32; } while (d<e);
 }
@@ -94,9 +94,9 @@ LZ4_wildCopy32(void* dstPtr, const void* srcPtr, void* dstEnd)
  * - dstEnd >= dstPtr + MINMATCH
  * - there is at least 8 bytes available to write after dstEnd */
 static inline void
-LZ4_memcpy_using_offset(BYTE* dstPtr, const BYTE* srcPtr, BYTE* dstEnd, const size_t offset)
+LZ4_memcpy_using_offset(uint8_t* dstPtr, const uint8_t* srcPtr, uint8_t* dstEnd, const size_t offset)
 {
-    BYTE v[8];
+    uint8_t v[8];
 
     switch(offset) {
     case 1:
@@ -135,12 +135,12 @@ LZ4_memcpy_using_offset(BYTE* dstPtr, const BYTE* srcPtr, BYTE* dstEnd, const si
  */
 typedef enum { loop_error = -2, initial_error = -1, ok = 0 } variable_length_error;
 static inline unsigned
-read_variable_length(const BYTE**ip, const BYTE* lencheck,
+read_variable_length(const uint8_t**ip, const uint8_t* lencheck,
                      int loop_check, int initial_check,
                      variable_length_error* error)
 {
-    U32 length = 0;
-    U32 s;
+    uint32_t length = 0;
+    uint32_t s;
     if (initial_check && (*ip) >= lencheck) {    /* overflow detection */
         *error = initial_error;
         return length;
@@ -218,26 +218,6 @@ static inline bool read_varint32_dpu(uint8_t **curr, uint32_t *val)
 	return false;
 }
 
-
-/**
- * Read an unsigned integer from the input buffer. Increments
- * the current location in the input buffer.
- *
- * @param curr: pointer to the current pointer to the buffer
- * @return Unsigned integer read
- */
-static uint32_t read_uint32_dpu(uint8_t **curr)
-{
-	uint32_t val = 0;
-	uint8_t *cur = *curr;
-	for (uint8_t i = 0; i < sizeof(uint32_t); i++) {
-		val |= (*cur++) << (8 * i);
-	}
-
-	*curr = cur;
-
-	return val;
-}
 		
 /**
  * Read the size of the long literal tag, which is used for literals with
@@ -270,7 +250,7 @@ static inline uint16_t make_offset_1_byte(uint8_t tag, struct host_buffer_contex
 {
 	if (input->curr >= (input->buffer + input->length))
 		return 0;
-	return (uint16_t)(*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
+	return (uint16_t)(*input->curr++) | (uint16_t)(GET_OFFSET_1_uint8_t(tag) << 8);
 }
 
 /**
@@ -319,7 +299,7 @@ static inline uint32_t make_offset_4_byte(uint8_t tag, struct host_buffer_contex
 }
 
 
-snappy_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime)
+lz4_status setup_decompression(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime)
 {
 	struct timeval start;
 	struct timeval end;
@@ -329,13 +309,13 @@ snappy_status setup_decompression(struct host_buffer_context *input, struct host
 	uint32_t dlength;
 	if (!read_varint32(input, &dlength)) {
 		fprintf(stderr, "Failed to read decompressed length\n");
-		return SNAPPY_INVALID_INPUT;
+		return LZ4_INVALID_INPUT;
 	}
 
 	// Check that uncompressed length is within the max we can store
 	if (dlength > output->max) {
 		fprintf(stderr, "Output length is to big: max=%ld len=%d\n", output->max, dlength);
-		return SNAPPY_BUFFER_TOO_SMALL;
+		return LZ4_BUFFER_TOO_SMALL;
 	}
 
 	// Allocate output buffer
@@ -346,30 +326,30 @@ snappy_status setup_decompression(struct host_buffer_context *input, struct host
 	gettimeofday(&end, NULL);
 	runtime->pre = get_runtime(&start, &end);
 
-	return SNAPPY_OK;
+	return LZ4_OK;
 }
 
 
-snappy_status snappy_decompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
+lz4_status lz4_decompress_host(struct host_buffer_context *input, struct host_buffer_context *output)
 {
-	const BYTE* const src = input->curr; //originally const char
-	BYTE* const dst = output->curr;
+	const uint8_t* const src = input->curr; //originally const char
+	uint8_t* const dst = output->curr;
 	int srcSize = input->length;
 	int outputSize = output->length;
 
 	if ((src == NULL) || (outputSize < 0)) {return -1; }
 
-	{	const BYTE* ip = (const BYTE*) src;
-		const BYTE* const iend = ip + srcSize - 2; // VARINT takes 2B
+	{	const uint8_t* ip = (const uint8_t*) src;
+		const uint8_t* const iend = ip + srcSize - 2; // VARINT takes 2B
 
-		BYTE* op = (BYTE*) dst;
-		BYTE* const oend = op + outputSize;
-		BYTE* cpy;
+		uint8_t* op = (uint8_t*) dst;
+		uint8_t* const oend = op + outputSize;
+		uint8_t* cpy;
 
-		const BYTE* const shortiend = iend - 14 /*maxLL*/ - 2 /*offset*/;
-        const BYTE* const shortoend = oend - 14 /*maxLL*/ - 18 /*maxML*/;
+		const uint8_t* const shortiend = iend - 14 /*maxLL*/ - 2 /*offset*/;
+        const uint8_t* const shortoend = oend - 14 /*maxLL*/ - 18 /*maxML*/;
 
-		const BYTE* match;
+		const uint8_t* match;
 		size_t offset;
 		unsigned token;
 		size_t length;
@@ -383,7 +363,6 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		/* Fast Loop : decode sequences as long as output < iend-FASTLOOP_SAFE_DISTANCE */
 		while (1) {
 			token = *ip++;
-			printf("token: %d, ip: %d\n", *(ip-1), ip - src);
 			length = token >> ML_BITS;
 
 			if (length == RUN_MASK) {
@@ -405,12 +384,10 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 
 				ip += length; op = cpy;
 			}
-			printf("length: %d ip: %d\n", length, ip - src);
 
 			/* get offset */
 			offset = LZ4_readLE16(ip); ip+=2;
 			match = op - offset;
-			printf("offset: %d\n", offset);
 
 			/* get matchlength */
 			length = token & ML_MASK;
@@ -430,7 +407,6 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 					goto safe_match_copy;
 				}
 			}
-			printf("matchlength: %d\n", length);
 			
 			/* copy match within block */
 			cpy = op + length;
@@ -447,9 +423,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		/* Main Loop : decode remaining sequences where output < FASTLOOP_SAFE_DISTANCE */
 		while(1) {
 			token = *ip++;
-			//printf("token: %d, curr: %d, output: %d\n", token, ip - src, op - dst);	
 			length = token >> ML_BITS; /* literal length */
-			//printf("%d\n", length);
 
 			            /* A two-stage shortcut for the most common case:
              * 1) If the literal length is 0..14, and there is enough space,
@@ -472,13 +446,12 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
                 length = token & ML_MASK; /* match length */
                 offset = LZ4_readLE16(ip); ip += 2;
                 match = op - offset;
-				//printf("length: %d offset: %d output: %d, input: %d\n", length, offset, op - dst, ip-src);
-                /* Do not deal with overlapping matches. */
+                
+				/* Do not deal with overlapping matches. */
                 if ( (length != ML_MASK)
                   && (offset >= 8)
                   && ( match >= dst) ) {
                     /* Copy the match. */
-					//printf("%d\n", op-dst);
 					LZ4_memcpy(op + 0, match + 0, 8);
                     LZ4_memcpy(op + 8, match + 8, 8);
                     LZ4_memcpy(op +16, match +16, 2);
@@ -497,8 +470,8 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
                 variable_length_error error = ok;
                 length += read_variable_length(&ip, iend-RUN_MASK, 1, 1, &error);
                 if (error == initial_error) { goto _output_error; }
-                if ((uptrval)(op)+length<(uptrval)(op)) { goto _output_error; } /* overflow detection */
-                if ((uptrval)(ip)+length<(uptrval)(ip)) { goto _output_error; } /* overflow detection */
+                if ((uintptr_t)(op)+length<(uintptr_t)(op)) { goto _output_error; } /* overflow detection */
+                if ((uintptr_t)(ip)+length<(uintptr_t)(ip)) { goto _output_error; } /* overflow detection */
             }
 
             /* copy literals */
@@ -542,7 +515,6 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
             length = token & ML_MASK;
 
     _copy_match:
-			//printf("length: %d\n", length);
 			if (length == ML_MASK) {
               variable_length_error error = ok;
               length += read_variable_length(&ip, iend - LASTLITERALS + 1, 1, 0, &error);
@@ -553,7 +525,6 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 		safe_match_copy:
             /* copy match within block */
             cpy = op + length;
-			//printf("length: %d, offset: %d\n", length, offset);
             if (offset<8) {
                 LZ4_write32(op, 0);   /* silence msan warning when offset==0 */
                 op[0] = match[0];
@@ -570,7 +541,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
             op += 8;
 
             if (cpy > oend-MATCH_SAFEGUARD_DISTANCE) {
-                BYTE* const oCopyLimit = oend - (WILDCOPYLENGTH-1);
+                uint8_t* const oCopyLimit = oend - (WILDCOPYLENGTH-1);
                 if (cpy > oend-LASTLITERALS) { goto _output_error; } /* Error : last LASTLITERALS bytes must be literals (uncompressed) */
                 if (op < oCopyLimit) {
                     LZ4_wildCopy8(op, match, oCopyLimit);
@@ -596,7 +567,7 @@ snappy_status snappy_decompress_host(struct host_buffer_context *input, struct h
 
 
 
-snappy_status snappy_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len)
+lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len)
 {
 	struct timeval start;
 	struct timeval end;
@@ -741,7 +712,7 @@ snappy_status snappy_decompress_dpu(unsigned char *in, size_t in_len, unsigned c
 	if (ret != 0)
 	{
 		DPU_ASSERT(dpu_free(dpus));
-		return SNAPPY_INVALID_INPUT;
+		return LZ4_INVALID_INPUT;
 	}
 
 	// Deallocate the DPUs
@@ -787,5 +758,5 @@ snappy_status snappy_decompress_dpu(unsigned char *in, size_t in_len, unsigned c
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
 	
-	return SNAPPY_OK;
+	return LZ4_OK;
 }	

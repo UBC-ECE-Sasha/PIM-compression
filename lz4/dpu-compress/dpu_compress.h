@@ -16,16 +16,6 @@
 #undef SEQREAD_CACHE_SIZE
 #define SEQREAD_CACHE_SIZE OUT_BUFFER_LENGTH
 
-
-/* Types */
-typedef uint8_t BYTE;
-typedef uint16_t U16;
-typedef uint32_t U32;
-typedef uint64_t U64;
-typedef uintptr_t uptrval;
-
-typedef U64 reg_t;
-
 /* LZ4 constants */
 #define MINMATCH 		 4
 #define WILDCOPYLENGTH   8
@@ -42,10 +32,10 @@ typedef U64 reg_t;
 
 // Return values
 typedef enum {
-    SNAPPY_OK = 0,              // Success code
-    SNAPPY_INVALID_INPUT,       // Input file has an invalid format
-    SNAPPY_BUFFER_TOO_SMALL     // Input or output file size is too large
-} snappy_status;
+    LZ4_OK = 0,              // Success code
+    LZ4_INVALID_INPUT,       // Input file has an invalid format
+    LZ4_BUFFER_TOO_SMALL     // Input or output file size is too large
+} lz4_status;
 
 
 typedef struct in_buffer_context
@@ -68,14 +58,14 @@ typedef struct out_buffer_context
 } out_buffer_context;
 
 /**
- * Perform the Snappy compression on the DPU.
+ * Perform the LZ4 compression on the DPU.
  *
  * @param input: holds input buffer information
  * @param output: holds output buffer information
  * @param block_size: size to compress at a time
- * @return SNAPPY_OK if successful, error code otherwise
+ * @return LZ4_OK if successful, error code otherwise
  */
-snappy_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t block_size);
+lz4_status dpu_compress(struct in_buffer_context *input, struct out_buffer_context *output, uint32_t block_size);
 
 #endif
 
