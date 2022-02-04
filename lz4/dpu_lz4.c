@@ -126,7 +126,7 @@ int main(int argc, char **argv)
 			break;
 		
 		case 'b':
-			block_size = atoi(optarg);
+			block_size = BLOCK_SIZE;
 			break;
 
 		case 'i':
@@ -168,8 +168,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			void *wrkmem = NULL;
-			status = lz4_compress_dpu(input.buffer, input.length, output.buffer, &output.length, wrkmem);
+			status = lz4_compress_dpu(&input, &output, block_size, &runtime);
 		}
 		else
 		{
@@ -189,7 +188,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = lz4_decompress_dpu(input.curr, input.length, output.buffer, &output.length);
+			status = lz4_decompress_dpu(&input, &output, &runtime);
 		}
 		else
 		{
@@ -210,25 +209,21 @@ int main(int argc, char **argv)
 		if (!(compress && use_dpu))
 			write_output_host(output_file, &output);
 
-		if (compress && !use_dpu) {
+		if (compress) {
 			printf("Compressed %ld bytes to: %s\n", output.length, output_file);
-			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
-		}
-
-		if (!compress) {
+			printf("Compression ratio: %f\n", (double)input.length / (double)output.length);
+		} else {
 			printf("Decompressed %ld bytes to: %s\n", output.length, output_file);
-			printf("Compression ratio: %f\n", 1 - (double)input.length / (double)output.length);
+			printf("Compression ratio: %f\n", (double)output.length / (double)input.length);
 		}
-
-		if (!use_dpu) {
-			printf("Pre-processing time: %f\n", runtime.pre);
-			printf("Alloc time: %f\n", runtime.d_alloc);
-			printf("Load time: %f\n", runtime.load);
-			printf("Copy in time: %f\n", runtime.copy_in);
-			printf("Host time: %f\n", runtime.run);
-			printf("Copy out time: %f\n", runtime.copy_out);
-			printf("Free time: %f\n", runtime.d_free);
-		}
+	
+		printf("Pre-processing time: %f\n", runtime.pre);
+		printf("Alloc time: %f\n", runtime.d_alloc);
+		printf("Load time: %f\n", runtime.load);
+		printf("Copy in time: %f\n", runtime.copy_in);
+		printf("Host time: %f\n", runtime.run);
+		printf("Copy out time: %f\n", runtime.copy_out);
+		printf("Free time: %f\n", runtime.d_free);
 	}
 	else
 	{

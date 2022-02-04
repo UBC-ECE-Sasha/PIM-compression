@@ -567,19 +567,19 @@ lz4_status lz4_decompress_host(struct host_buffer_context *input, struct host_bu
 
 
 
-lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len)
+lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime)
 {
 	struct timeval start;
 	struct timeval end;
 	gettimeofday(&start, NULL);
-	uint8_t *in_curr = in;
+	uint8_t *in_curr = input->curr;
 
 	// Calculate workload of each task
 	uint32_t dblock_size = BLOCK_SIZE;
 
 	uint8_t *input_start = in_curr;
 
-	uint32_t num_blocks = 1;
+	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
 	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
 
@@ -589,7 +589,7 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 	uint32_t dpu_idx = 0;
 	uint32_t task_idx = 0;
 	uint32_t task_blocks = 0;
-	uint32_t total_offset = 0; 
+	uint32_t total_offset = 0;
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
 		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
@@ -608,15 +608,16 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 		}
 
 		// Read the compressed block size
-		uint32_t compressed_size = in_len;
+		uint32_t compressed_size = 4096;
 		in_curr += compressed_size;
 		
 		total_offset += compressed_size;	
 		task_blocks++;
 	}
 	in_curr = input_start; // Reset the pointer back to start for copying data to the DPU
-
+	
 	gettimeofday(&end, NULL);
+	runtime->pre += get_runtime(&start, &end);
 
 	// Allocate the DPUs
 	gettimeofday(&start, NULL);
@@ -625,15 +626,17 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 	struct dpu_set_t dpu;
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 	gettimeofday(&end, NULL);
+	runtime->d_alloc += get_runtime(&start, &end);
 
 	gettimeofday(&start, NULL);	
 	DPU_ASSERT(dpu_load(dpus, DPU_DECOMPRESS_PROGRAM, NULL));
 	gettimeofday(&end, NULL);
+	runtime->load += get_runtime(&start, &end);
 
 	// Calculate input length without header and aligned output length
 	gettimeofday(&start, NULL);
-	uint32_t total_input_length = in_len;
-	uint32_t aligned_output_length = ALIGN(*out_len, 8);
+	uint32_t total_input_length = input->length;
+	uint32_t aligned_output_length = ALIGN(output->length, 8);
 
 	uint32_t input_length;
 	uint32_t output_length;
@@ -706,6 +709,8 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 	}
 
 	gettimeofday(&end, NULL);
+	runtime->copy_in += get_runtime(&start, &end);
+	
 
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -731,7 +736,7 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 				if (largest_output_length < output_length)
 					largest_output_length = output_length;
 
-				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(out + output_offset[dpu_idx][0])));
+				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
 #else
 			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, out + output_offset[dpu_idx][0], ALIGN(output_length, 8)));
 #endif		
@@ -744,6 +749,7 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 #endif
 	
 		gettimeofday(&end, NULL);
+		runtime->copy_out += get_runtime(&start, &end);
 
 		// Print the logs
 		dpu_idx = starting_dpu_idx;
@@ -757,6 +763,7 @@ lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *o
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
-	
+	runtime->d_free += get_runtime(&start, &end);
+
 	return LZ4_OK;
 }	
