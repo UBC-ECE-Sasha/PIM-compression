@@ -579,19 +579,18 @@ lz4_status lz4_compress_host(struct host_buffer_context *input, struct host_buff
 	return LZ4_OK;
 }
 
-lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len, void *wrkmem)
+lz4_status lz4_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size, struct program_runtime *runtime)
 {
 	// Set block size
-	uint32_t block_size = BLOCK_SIZE;
-	uint8_t *in_curr = in;
-	uint8_t *out_curr = out;
+	uint8_t *in_curr = input->buffer;
+	uint8_t *out_curr = output->buffer;
 
 	struct timeval start;
 	struct timeval end;
 	gettimeofday(&start, NULL);
 
 	// Calculate the workload of each task
-	uint32_t num_blocks = (in_len + block_size - 1) / block_size;
+	uint32_t num_blocks = (input->length + block_size - 1) / block_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
 	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
 
@@ -620,10 +619,11 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 	}
 
 	// Write the decompressed length
-	write_varint32_dpu(&out_curr, in_len);
-	*out_len = out_curr - out;
+	write_varint32_dpu(&out_curr, input->length);
+	output->length = out_curr - output->buffer;
 	
 	gettimeofday(&end, NULL);
+	runtime->pre += get_runtime(&start, &end);
 
 	// Allocate DPUs
 	gettimeofday(&start, NULL);
@@ -632,11 +632,13 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 	struct dpu_set_t dpu;
 	DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpus));
 	gettimeofday(&end, NULL);
+	runtime->d_alloc += get_runtime(&start, &end);
 
 	// Load program
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_load(dpus, DPU_COMPRESS_PROGRAM, NULL));
 	gettimeofday(&end, NULL);
+	runtime->load += get_runtime(&start, &end);
 
 	// Copy variables common to all DPUs
 	gettimeofday(&start, NULL);
@@ -664,7 +666,7 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 				input_length = blocks * block_size;
 			}
 			else if ((dpu_idx == 0) || (input_block_offset[dpu_idx][0] != 0)) {
-				input_length = in_len - (input_block_offset[dpu_idx][0] * block_size);
+				input_length = input->length - (input_block_offset[dpu_idx][0] * block_size);
 			} 
 			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
 
@@ -708,6 +710,7 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 	}
 
 	gettimeofday(&end, NULL);
+	runtime->copy_in = get_runtime(&start, &end);
 	
 	// Launch all DPUs
 	int ret = dpu_launch(dpus, DPU_SYNCHRONOUS);
@@ -718,8 +721,8 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 	}
 
 	// Open the output file and write the header
-	FILE *fout = fopen("compressed.lz4", "w");
-	fwrite(out, sizeof(uint8_t), *out_len, fout);
+	FILE *fout = fopen(output->file_name, "w");
+	fwrite(output->buffer, sizeof(uint8_t), output->length, fout);
 	
 	// Deallocate the DPUs
 	uint32_t max_output_length = lz4_max_compressed_length(input_blocks_per_dpu * block_size);
@@ -753,7 +756,7 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 			uint32_t dpu_output_length = 0;
 			for (uint8_t i = 0; i < NR_TASKLETS; i++) {
 				if (output_length[dpu_idx][i] != 0) {
-					*out_len += output_length[dpu_idx][i];
+					output->length += output_length[dpu_idx][i];
 					dpu_output_length = output_offset[dpu_idx][i] + output_length[dpu_idx][i];
 				}
 			}
@@ -778,6 +781,7 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 		// Don't count the time it takes to read the DPU log or write the data to a file, 
 		// since we don't count that for the host
 		gettimeofday(&end, NULL);
+		runtime->copy_out = get_runtime(&start, &end); 
 
 		// Print the logs
 		dpu_idx = starting_dpu_idx;
@@ -796,12 +800,13 @@ lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out
 		}
 	}
 
-	printf("Compressed %ld bytes to: %s\n", *out_len, "compressed.lz4");	
-	printf("Compression ratio: %f\n", 1 - (double)*out_len / (double)in_len);
+	printf("Compressed %ld bytes to: %s\n", output->length, "compressed.lz4");	
+	printf("Compression ratio: %f\n", 1 - (double)output->length / (double)input->length);
 
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
 	gettimeofday(&end, NULL);
+	runtime->d_free = get_runtime(&start, &end);
 
 	fclose(fout);
 

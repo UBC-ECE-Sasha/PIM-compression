@@ -10,15 +10,15 @@ from parse_output_file import get_avg_max_cycles, get_avg_host_runtime, get_avg_
 Defines which files to parse for this graph, format is:
 	   'test file' : ('# dpus', '# tasklets')
 """
-files = {'terror2': ('1',   '4'), 
-        'plrabn12': ('1',   '15'), 
-		'world192': ('3',   '12'),
-		'xml'     : ('14',  '12'), 
-		'sao'     : ('19',  '12'),
-		'dickens' : ('26',  '12'),
-		'nci'     : ('86',  '12'), 
-		'mozilla' : ('131',  '12'), 
-		'spamfile': ('230', '12')}
+files = {'terror2': ('1', '1'), 
+        'plrabn12': ('1', '1'), 
+		'world192': ('1', '1'),
+		'xml'     : ('1', '1'), 
+		'sao'     : ('1', '1'),
+		'dickens' : ('1', '1'),
+		'nci'     : ('1', '1'), 
+		'mozilla' : ('1', '1'), 
+		'spamfile': ('1', '1')}
 
 
 def setup_graph(path: pathlib.Path):
@@ -36,10 +36,10 @@ def setup_graph(path: pathlib.Path):
 		ahr = get_avg_host_runtime(path, filename)
 		adr = get_avg_max_cycles(path, filename, params[0], params[1])
 
-		if ahr is -1:
+		if ahr == -1:
 			print(f"ERROR: File not found fo host: {filename}.", file=sys.stderr)
 			return
-		elif adr is -1:
+		elif adr == -1:
 			print(f"ERROR: File not found for DPU: {filename} with {params[0]} dpus and {params[1]} tasklets.", file=sys.stderr)
 			return
 		else:

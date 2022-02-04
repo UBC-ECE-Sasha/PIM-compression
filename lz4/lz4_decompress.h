@@ -32,6 +32,6 @@ lz4_status lz4_decompress_host(struct host_buffer_context *input, struct host_bu
  * @param out_len: holds the output buffer length
  * @return LZ4_OK if successful, error code otherwise
  */
-lz4_status lz4_decompress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len);
+lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, struct program_runtime *runtime);
 
 #endif /* _LZ4_DECOMPRESSION_H_ */

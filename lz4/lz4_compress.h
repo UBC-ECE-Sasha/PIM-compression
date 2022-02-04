@@ -34,8 +34,7 @@ lz4_status lz4_compress_host(struct host_buffer_context *input, struct host_buff
  * @param out_len: holds the output buffer length
  * @return LZ4_OK if successful, error code otherwise
  */
-lz4_status lz4_compress_dpu(unsigned char *in, size_t in_len, unsigned char *out, size_t *out_len,
-            void *wrkmem);
+lz4_status lz4_compress_dpu(struct host_buffer_context *input, struct host_buffer_context *output, uint32_t block_size, struct program_runtime *runtime);
 
 
 #endif /* _LZ4_COMPRESSION_H_ */
