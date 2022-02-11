@@ -579,7 +579,7 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 
 	uint8_t *input_start = in_curr;
 
-	uint32_t num_blocks = 1;
+	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
 	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
 
@@ -589,7 +589,7 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 	uint32_t dpu_idx = 0;
 	uint32_t task_idx = 0;
 	uint32_t task_blocks = 0;
-	uint32_t total_offset = 0; 
+	uint32_t total_offset = 0;
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
 		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
@@ -608,17 +608,16 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 		}
 
 		// Read the compressed block size
-		uint32_t compressed_size = input->length;
+		uint32_t compressed_size = 4096;
 		in_curr += compressed_size;
 		
 		total_offset += compressed_size;	
 		task_blocks++;
 	}
 	in_curr = input_start; // Reset the pointer back to start for copying data to the DPU
-
+	
 	gettimeofday(&end, NULL);
 	runtime->pre += get_runtime(&start, &end);
-
 
 	// Allocate the DPUs
 	gettimeofday(&start, NULL);

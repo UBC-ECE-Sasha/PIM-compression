@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 from parse_output_file import get_avg_max_cycles, get_compr_ratio 
 
 # Defines which files to parse for this graph
-dpus = '128'
-num_tasks = ['1', '4', '8', '12', '16', '20', '24']
+dpus = '1'
+num_tasks = ['1']#, '4', '8', '12', '16', '20', '24']
 
 def setup_graph(path: pathlib.Path, testfile):
 	"""

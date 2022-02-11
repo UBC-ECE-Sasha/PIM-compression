@@ -211,11 +211,11 @@ int main(int argc, char **argv)
 
 		if (compress) {
 			printf("Compressed %ld bytes to: %s\n", output.length, output_file);
-			printf("Compression ratio: %f\n", 1 - (double)output.length / (double)input.length);
+			printf("Compression ratio: %f\n", (double)input.length / (double)output.length);
 		}
 		else {
 			printf("Decompressed %ld bytes to: %s\n", output.length, output_file);
-			printf("Compression ratio: %f\n", 1 - (double)input.length / (double)output.length);
+			printf("Compression ratio: %f\n", (double)output.length / (double)input.length);
 		}
 	
 		printf("Pre-processing time: %f\n", runtime.pre);

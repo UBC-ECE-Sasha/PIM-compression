@@ -188,5 +188,6 @@ def get_compr_ratio(path: pathlib.Path, testfile, num_dpus, num_tasks):
 				for line in lines:
 					if "Compression ratio" in line:
 						line_split = line.split(' ')
+						print(float(line_split[-1]))
 						return float(line_split[-1])
 	return -1

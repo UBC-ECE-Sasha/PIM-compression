@@ -593,7 +593,7 @@ lz4_status lz4_compress_dpu(struct host_buffer_context *input, struct host_buffe
 	uint32_t num_blocks = (input->length + block_size - 1) / block_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
 	uint32_t input_blocks_per_task = (num_blocks + TOTAL_NR_TASKLETS - 1) / TOTAL_NR_TASKLETS;
-
+	
 	uint32_t input_block_offset[NR_DPUS][NR_TASKLETS] = {0};
 	uint32_t output_offset[NR_DPUS][NR_TASKLETS] = {0};
 	
@@ -799,9 +799,6 @@ lz4_status lz4_compress_dpu(struct host_buffer_context *input, struct host_buffe
 			free(dpu_bufs[curr_dpu_idx]);
 		}
 	}
-
-	printf("Compressed %ld bytes to: %s\n", output->length, "compressed.lz4");	
-	printf("Compression ratio: %f\n", 1 - (double)output->length / (double)input->length);
 
 	gettimeofday(&start, NULL);
 	DPU_ASSERT(dpu_free(dpus));
