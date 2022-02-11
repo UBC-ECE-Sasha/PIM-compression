@@ -1,5 +1,4 @@
 *.swp
 *.dpu
 tags
-*decompress
 *host_compress
