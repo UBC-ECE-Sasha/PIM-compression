@@ -85,7 +85,12 @@ def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
     ax.set_xticklabels(files)
 
     # Set up axes labels
-    ax.set_ylabel('Runtime (sec)')
+    if "decomp" in str(lz4_path) and "decomp" in str(snappy_path):
+        run = "Decompression"
+    else:
+        run = "Compression"
+
+    ax.set_ylabel('{} Runtime (sec)'.format(run))
     plt.title('Snappy vs LZ4 Runtime (1 DPU, 1 Tasklet, 1 Page)')
     ax.legend(['LZ4 DPU', 'Snappy DPU', 'LZ4 Host', 'Snappy Host'])
 
@@ -105,6 +110,8 @@ if __name__ == "__main__":
     path_snappy = pathlib.Path(args.PATH_SNAPPY)
     if not path_lz4.is_dir() or not path_snappy.is_dir():
         raise argparse.ArgumentTypeError(f"One of the paths is invalid")
+
+    
 
     setup_graph(path_lz4, path_snappy)
 

@@ -71,7 +71,7 @@ def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
 
     # Set up axes labels
     ax.set_ylabel('Compression Ratio')
-    plt.title('Snappy vs LZ4 Compression (1 DPU, 1 Tasklet)')
+    plt.title('Snappy vs LZ4 Compression (1 DPU, 1 Tasklet, 1 Page)')
 
     ax.legend(['LZ4', 'Snappy'])
 
