@@ -92,6 +92,34 @@ static void update_token(struct out_buffer_context *output, uint32_t offset, uin
 }
 
 /**
+ * Write the compressed length of a block to the output_offset. Must first read 8
+ * bytes at output_offset, add in the compressed length, and then write the buffer back.
+ *
+ * @param output: holds output buffer information
+ */
+static void write_compressed_length(struct out_buffer_context *output)
+{
+	/* 
+	 * We only deal with one 4K block per DPU so we have an offset of 0 into mem
+	 */
+	uint32_t offset = 0;
+	uint8_t data_read[16];
+	uint32_t aligned_offset = WINDOW_ALIGN(offset, 8);
+	mram_read(&output->buffer[aligned_offset], data_read, 16);
+
+	offset %= 8;
+
+	// Fill in the compressed length
+	data_read[offset] = (output->curr - 4) & 0xFF;
+	data_read[offset + 1] = ((output->curr - 4) >> 8) & 0xFF;
+	data_read[offset + 2] = ((output->curr - 4) >> 16) & 0xFF;
+	data_read[offset + 3] = ((output->curr - 4) >> 24) & 0xFF;
+	
+	// Write the buffer back
+	mram_write(data_read, &output->buffer[aligned_offset], 16);
+}
+
+/**
  * Write data to the output buffer. If append buffer becomes full, it is written
  * to MRAM and a new buffer is started.
  *
@@ -292,7 +320,6 @@ static int compress_block(struct in_buffer_context *input, struct out_buffer_con
 	uint32_t dest = output->curr;	
 	uint32_t base = input -> curr;	
 
-
 	const uint32_t lowLimit = input-> curr;
 	uint32_t const iend = ip + input_size;	
 	uint32_t matchlimit = iend - LASTLITERALS;
@@ -359,8 +386,9 @@ _next_match:
 			if (matchCode >= ML_MASK) {
 				update_token(output, token, token_val + ML_MASK);
 				emit_match_length(output, matchCode - ML_MASK);
-			} else
+			} else {
 				update_token(output, token, token_val + matchCode);
+			}
 		}		
 
 		anchor = ip;
@@ -408,8 +436,13 @@ lz4_status dpu_compress(struct in_buffer_context *input, struct out_buffer_conte
 	// Allocate the hash table for compression
 	uint16_t *table = (uint16_t *)mem_alloc(table_size);
 	
+	// Make room for compressed length
+	output->curr += 4;
+	
 	// Compress the current block
 	compress_block(input, output, input->length, table, num_table_entries);
+
+	write_compressed_length(output);
 
 	// Write out last buffer to MRAM
 	output->length = output->curr;

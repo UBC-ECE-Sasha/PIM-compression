@@ -209,12 +209,17 @@ read_variable_length(struct in_buffer_context *input, const uint32_t lencheck,
  *********************/
 lz4_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_context *output)
 {
-	dbg_printf("curr: %u length: %u\n", input->curr, input->length);
-	dbg_printf("output length: %u\n", output->length);
-
+	printf("%d %d\n", input->curr, input->length);
+	printf("%d\n", output->length);
+	
+	// Read the compressed block size
+	uint32_t srcSize = READ_uint8_t(input) |
+					(READ_uint8_t(input) << 8) |
+					(READ_uint8_t(input) << 16) |
+					(READ_uint8_t(input) << 24);
+	
 	uint32_t src = input->curr;
 	uint32_t dst = output->curr;
-	uint32_t srcSize = input->length;
 	uint32_t outputSize = output->length;
 
 	if (outputSize < 0) {return -1; }
@@ -242,6 +247,7 @@ lz4_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_con
 		/* Fast Loop : decode sequences as long as output < iend-FASTLOOP_SAFE_DISTANCE */
 		while (1) {
 			token = READ_uint8_t(input);
+			printf("%d \n\n", token);
 			length = token >> ML_BITS;
 
 			if (length == RUN_MASK) {
@@ -407,6 +413,7 @@ lz4_status dpu_uncompress(struct in_buffer_context *input, struct out_buffer_con
 
         /* Overflow error detected */
     _output_error:
+		printf("*%d\n", input->curr);
 		return LZ4_ERROR;
 	}
 }

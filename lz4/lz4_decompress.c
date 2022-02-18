@@ -26,6 +26,24 @@ static const int      dec64table[8] = {0, 0, 0, -1, -4,  1, 2, 3};
 
 #define MEM_INIT(p,v,s)   memset((p),(v),(s))
 
+/**
+ * Read an unsigned integer from the input buffer. Increments
+ * the current location in the input buffer.
+ *
+ * @param input: holds input buffer information
+ * @return Unsigned integer read
+ */
+static uint32_t read_uint32(struct host_buffer_context *input)
+{
+	uint32_t val = 0;
+	for (uint8_t i = 0; i < sizeof(uint32_t); i++) {
+		val |= (*input->curr++) << (8 * i);
+	}
+
+	return val;
+}
+
+
 /* customized variant of memcpy, which can overwrite up to 8 bytes beyond dstEnd */
 static inline
 void LZ4_wildCopy8(void* dstPtr, const void* srcPtr, void* dstEnd)
@@ -321,7 +339,7 @@ lz4_status setup_decompression(struct host_buffer_context *input, struct host_bu
 	// Allocate output buffer
 	output->buffer = malloc(ALIGN(dlength, 8) | BITMASK(11));
 	output->curr = output->buffer;
-	output->length = dlength;
+	output->length = 4096;//dlength;
 
 	gettimeofday(&end, NULL);
 	runtime->pre = get_runtime(&start, &end);
@@ -572,12 +590,11 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 	struct timeval start;
 	struct timeval end;
 	gettimeofday(&start, NULL);
-	uint8_t *in_curr = input->curr;
 
 	// Calculate workload of each task
 	uint32_t dblock_size = BLOCK_SIZE;
 
-	uint8_t *input_start = in_curr;
+	uint8_t *input_start = input -> curr;
 
 	uint32_t num_blocks = (output->length + dblock_size - 1) / dblock_size;
 	uint32_t input_blocks_per_dpu = (num_blocks + NR_DPUS - 1) / NR_DPUS;
@@ -590,6 +607,8 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 	uint32_t task_idx = 0;
 	uint32_t task_blocks = 0;
 	uint32_t total_offset = 0;
+	
+	printf("nr dpus: %d, num_blocks: %d, input_blocks_dpu: %d \n", NR_DPUS, num_blocks, input_blocks_per_dpu);
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
 		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
@@ -608,13 +627,14 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 		}
 
 		// Read the compressed block size
-		uint32_t compressed_size = 4096;
-		in_curr += compressed_size;
+		uint32_t compressed_size = read_uint32(input);
+		printf("compressed size: %d \n", compressed_size);
+		input->curr += compressed_size;
 		
-		total_offset += compressed_size;	
+		total_offset += compressed_size + sizeof(uint32_t);	
 		task_blocks++;
 	}
-	in_curr = input_start; // Reset the pointer back to start for copying data to the DPU
+	input->curr = input_start; // Reset the pointer back to start for copying data to the DPU
 	
 	gettimeofday(&end, NULL);
 	runtime->pre += get_runtime(&start, &end);
@@ -635,7 +655,7 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 
 	// Calculate input length without header and aligned output length
 	gettimeofday(&start, NULL);
-	uint32_t total_input_length = input->length;
+	uint32_t total_input_length = input->length - (input->curr - input->buffer);
 	uint32_t aligned_output_length = ALIGN(output->length, 8);
 
 	uint32_t input_length;
@@ -680,11 +700,11 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 				largest_input_length = input_length;
 			}
 
-			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(in_curr + input_offset[dpu_idx][0])));
+			DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(input->curr + input_offset[dpu_idx][0])));
 #else
 			DPU_ASSERT(dpu_copy_to(dpu, "input_offset", 0, input_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
 			DPU_ASSERT(dpu_copy_to(dpu, "output_offset", 0, output_offset[dpu_idx], sizeof(uint32_t) * NR_TASKLETS));
-			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, in_curr + input_offset[dpu_idx][0], ALIGN(input_length,8)));
+			DPU_ASSERT(dpu_copy_to(dpu, "input_buffer", 0, input->curr + input_offset[dpu_idx][0], ALIGN(input_length,8)));
 #endif
 			dpu_idx++;
 		}
@@ -738,7 +758,7 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 
 				DPU_ASSERT(dpu_prepare_xfer(dpu, (void *)(output->buffer + output_offset[dpu_idx][0])));
 #else
-			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, out + output_offset[dpu_idx][0], ALIGN(output_length, 8)));
+			DPU_ASSERT(dpu_copy_from(dpu, "output_buffer", 0, output->buffer + output_offset[dpu_idx][0], ALIGN(output_length, 8)));
 #endif		
 			}
 

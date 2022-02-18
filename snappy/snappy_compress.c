@@ -69,7 +69,6 @@ static inline uint32_t snappy_max_compressed_length(uint32_t input_length) {
 static inline void write_varint32(struct host_buffer_context *output, uint32_t val)
 {
 	static const int mask = 128;
-
 	if (val < (1 << 7)) {
 		*(output->curr++) = val;
 	}
@@ -570,6 +569,7 @@ snappy_status snappy_compress_dpu(struct host_buffer_context *input, struct host
 			else if ((dpu_idx == 0) || (input_block_offset[dpu_idx][0] != 0)) {
 				input_length = input->length - (input_block_offset[dpu_idx][0] * block_size);
 			} 
+			printf("input_length: %d\n", input_length);
 			DPU_ASSERT(dpu_copy_to(dpu, "input_length", 0, &input_length, sizeof(uint32_t)));
 
 #ifdef BULK_XFER		

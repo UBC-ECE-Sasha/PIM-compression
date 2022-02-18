@@ -314,6 +314,8 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 	uint32_t task_idx = 0;
 	uint32_t task_blocks = 0;
 	uint32_t total_offset = 0;
+
+	printf("num_blocks: %d, input_blocks_dpu: %d \n", num_blocks, input_blocks_per_dpu);
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
 		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
@@ -333,6 +335,7 @@ snappy_status snappy_decompress_dpu(struct host_buffer_context *input, struct ho
 
 		// Read the compressed block size
 		uint32_t compressed_size = read_uint32(input);
+		printf("%d\n", compressed_size);
 		input->curr += compressed_size;
 		
 		total_offset += compressed_size + sizeof(uint32_t);	
