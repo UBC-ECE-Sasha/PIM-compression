@@ -22,10 +22,10 @@ def get_max_cycles(path: pathlib.Path):
 				try:
 					if int(line_split[-4]) > max_cycles:
 						max_cycles = int(line_split[-4])
-						print(max_cycles)
 				except ValueError:
 					continue
 
+	print("testfile: {} ".format(path) + str(max_cycles))
 	return max_cycles
 
 def get_postproc_time(path: pathlib.Path):
@@ -158,6 +158,7 @@ def get_avg_max_cycles(path: pathlib.Path, testfile, num_dpus, num_tasks):
 		tasklets = re.search(rf"tasklets={num_tasks}[^0-9]", str(filename))
 		
 		if (testfile in str(filename)) and (dpus is not None) and (tasklets is not None):
+			print(testfile)
 			total_cycles += get_max_cycles(filename)
 			num_files += 1
 
@@ -189,6 +190,7 @@ def get_compr_ratio(path: pathlib.Path, testfile, num_dpus, num_tasks):
 				for line in lines:
 					if "Compression ratio" in line:
 						line_split = line.split(' ')
+						print(testfile)
 						print(float(line_split[-1]))
 						return float(line_split[-1])
 	return -1

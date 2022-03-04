@@ -719,7 +719,7 @@ lz4_status lz4_compress_dpu(struct host_buffer_context *input, struct host_buffe
 			for (uint8_t i = 0; i < NR_TASKLETS; i++) {
 				if (output_length[dpu_idx][i] != 0) {
 					output->length += output_length[dpu_idx][i];
-					printf("%d \n", output_length[dpu_idx][i]);
+					//printf("compressed size: %d \n", output_length[dpu_idx][i] - 4);
 					dpu_output_length = output_offset[dpu_idx][i] + output_length[dpu_idx][i];
 				}
 			}

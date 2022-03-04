@@ -10,16 +10,13 @@ from parse_output_file import get_avg_host_runtime, get_avg_max_cycles, get_avg_
 Defines which files to parse for this graph, format is:
 	   'test file' : ('# dpus', '# tasklets')
 """
-files = {'alice': ('1', '1'),
-        'terror2': ('1', '1'), 
-        'plrabn12': ('1', '1'), 
-		'world192': ('1', '1'),
-		'xml'     : ('1', '1'), 
-		'sao'     : ('1', '1'),
-		'dickens' : ('1', '1'),
-		'nci'     : ('1', '1'), 
-		'mozilla' : ('1', '1'), 
-		'spamfile': ('1', '1')}
+files = {'plrabn12': ('64', '1'), 
+		'world192': ('64', '1'),
+		'xml'     : ('64', '1'), 
+		'sao'     : ('64', '1'),
+		'dickens' : ('64', '1'),
+		'nci'     : ('64', '1'), 
+		'spamfile': ('64', '1')}
 
 
 def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
@@ -30,13 +27,13 @@ def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
     """
     # Loop through directory for respective output files and parse them
     snappy_host_times = []
-    lz4_host_times = []
+    #lz4_host_times = []
     lz4_times = []
     snappy_times = []
     for filename in files:
         params = files[filename]
 
-        lz4_host_time = get_avg_host_runtime(lz4_path, filename)
+        #lz4_host_time = get_avg_host_runtime(lz4_path, filename)
         snappy_host_time = get_avg_host_runtime(snappy_path, filename)
         snappy_dpu_cycles = get_avg_max_cycles(snappy_path, filename, params[0], params[1])
         lz4_dpu_cycles = get_avg_max_cycles(lz4_path, filename, params[0], params[1])
@@ -45,14 +42,14 @@ def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
         if lz4_dpu_cycles == -1:
             print(f"ERROR: File not found for lz4 dpu: {filename}.", file=sys.stderr)
             return
-        elif snappy_host_time == -1 or lz4_host_time == -1:
-            print(f"ERROR: File not found for host: {filename}.", file=sys.stderr)
-            return
+        #elif snappy_host_time == -1 or lz4_host_time == -1:
+        #    print(f"ERROR: File not found for host: {filename}.", file=sys.stderr)
+        #    return
         elif snappy_dpu_cycles == -1:
             print(f"ERROR: File not found for snappy dpu: {filename}", file=sys.stderr)
             return
         else:
-            lz4_host_times.append(lz4_host_time)
+            #lz4_host_times.append(lz4_host_time)
             snappy_host_times.append(snappy_host_time)
             snappy_times.append(float(snappy_dpu_cycles) / 267000000 + get_avg_prepostproc_time(snappy_path, filename, params[0], params[1]))
             lz4_times.append(float(lz4_dpu_cycles) / 267000000 + get_avg_prepostproc_time(lz4_path, filename, params[0], params[1]))
@@ -69,13 +66,13 @@ def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
     width = 0.13
     lz4_bar = np.arange(len(files.keys()))
     snappy_bar = [x + width for x in lz4_bar]
-    lz4_host_bar = [x + 2 * width for x in lz4_bar]
-    snappy_host_bar = [x + 3 * width for x in lz4_bar]
+    #lz4_host_bar = [x + 2 * width for x in lz4_bar]
+    snappy_host_bar = [x + 2 * width for x in lz4_bar]
 
 
     ax.bar(lz4_bar, lz4_times, width, color=colors[0], edgecolor='white', label='LZ4 DPU')
     ax.bar(snappy_bar, snappy_times, width, color=colors[1], edgecolor='white', label='Snappy DPU')
-    ax.bar(lz4_host_bar, lz4_host_times, width, color=colors[2], edgecolor='white', label='LZ4 Host')
+    #ax.bar(lz4_host_bar, lz4_host_times, width, color=colors[2], edgecolor='white', label='LZ4 Host')
     ax.bar(snappy_host_bar, snappy_host_times, width, color=colors[3], edgecolor='white', label='Snappy Host')
 
 
@@ -91,8 +88,8 @@ def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):
         run = "Compression"
 
     ax.set_ylabel('{} Runtime (sec)'.format(run))
-    plt.title('Snappy vs LZ4 Runtime (1 DPU, 1 Tasklet, 1 Page)')
-    ax.legend(['LZ4 DPU', 'Snappy DPU', 'LZ4 Host', 'Snappy Host'])
+    plt.title('Snappy vs LZ4 Runtime (64 DPUs, 1 Tasklet, 64 Pages)')
+    ax.legend(['LZ4 DPU', 'Snappy DPU', 'Snappy Host'])
 
     plt.show()
 

@@ -14,6 +14,7 @@ SRCDIR=$PWD/
 
 cd ../${ALG}
 
+make clean
 make
 
 mkdir outfiles

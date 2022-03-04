@@ -10,16 +10,13 @@ from parse_output_file import get_compr_ratio
 Defines which files to parse for this graph, format is:
 	   'test file' : ('# dpus', '# tasklets')
 """
-files = {'alice': ('1', '1'),
-        'terror2': ('1', '1'), 
-        'plrabn12': ('1', '1'), 
-		'world192': ('1', '1'),
-		'xml'     : ('1', '1'), 
-		'sao'     : ('1', '1'),
-		'dickens' : ('1', '1'),
-		'nci'     : ('1', '1'), 
-		'mozilla' : ('1', '1'), 
-		'spamfile': ('1', '1')}
+files = {'plrabn12': ('64', '1'), 
+		'world192': ('64', '1'),
+		'xml'     : ('64', '1'), 
+		'sao'     : ('64', '1'),
+		'dickens' : ('64', '1'),
+		'nci'     : ('64', '1'), 
+		'spamfile': ('64', '1')}
 
 
 def setup_graph(lz4_path: pathlib.Path, snappy_path: pathlib.Path):

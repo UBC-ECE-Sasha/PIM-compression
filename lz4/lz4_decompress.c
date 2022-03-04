@@ -339,7 +339,7 @@ lz4_status setup_decompression(struct host_buffer_context *input, struct host_bu
 	// Allocate output buffer
 	output->buffer = malloc(ALIGN(dlength, 8) | BITMASK(11));
 	output->curr = output->buffer;
-	output->length = 4096;//dlength;
+	output->length = dlength;
 
 	gettimeofday(&end, NULL);
 	runtime->pre = get_runtime(&start, &end);
@@ -608,7 +608,7 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 	uint32_t task_blocks = 0;
 	uint32_t total_offset = 0;
 	
-	printf("nr dpus: %d, num_blocks: %d, input_blocks_dpu: %d \n", NR_DPUS, num_blocks, input_blocks_per_dpu);
+	//printf("nr dpus: %d, num_blocks: %d, input_blocks_dpu: %d \n", NR_DPUS, num_blocks, input_blocks_per_dpu);
 	for (uint32_t i = 0; i < num_blocks; i++) {
 		// If we have reached the next DPU's boundary, update the index
 		if (i == (input_blocks_per_dpu * (dpu_idx + 1))) {
@@ -628,7 +628,7 @@ lz4_status lz4_decompress_dpu(struct host_buffer_context *input, struct host_buf
 
 		// Read the compressed block size
 		uint32_t compressed_size = read_uint32(input);
-		printf("compressed size: %d \n", compressed_size);
+		//printf("compressed size: %d \n", compressed_size);
 		input->curr += compressed_size;
 		
 		total_offset += compressed_size + sizeof(uint32_t);	
