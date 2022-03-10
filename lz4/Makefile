@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = --std=c99 -O3 -g -Wall -Wextra -I../PIM-common/common/include
+CFLAGS = --std=c99 -O3 -g -Wall -Wextra -I../PIM-common/common/include -I ../common/include
 DPU_OPTS = `dpu-pkg-config --cflags --libs dpu`
 
 # define DEBUG in the source if we are debugging
@@ -35,26 +35,3 @@ dpu_lz4: $(SOURCE)
 
 tags:
 	ctags -R -f tags . /usr/share/upmem/include
-
-
-TEST_LZ4 = $(wildcard ../test/*.lz4)
-TEST_HOST_VERIFIED = $(patsubst ../test/%.lz4,test/%.host_verified,$(TEST_LZ4))
-TEST_DPU_VERIFIED = $(patsubst ../test/%.lz4,test/%.dpu_verified,$(TEST_LZ4))
-
-.PHONY: test test_dpu test_host
-test: test_host test_dpu
-test_dpu: test/ $(TEST_DPU_VERIFIED)
-test_host: test/ $(TEST_HOST_VERIFIED)
-
-test/:
-	mkdir -p test/
-
-# alternative diff command:
-# bash -c "diff <(xxd test/$*.host_output) <(xxd ../test/$*.txt)"
-test/%.host_verified: ../test/%.lz4 ../test/%.txt all
-	./dpu_lz4 -i $< -o test/$*.host_uncompressed 2>&1 | tee test/$*.host_output
-	cmp test/$*.host_uncompressed ../test/$*.txt
-
-test/%.dpu_verified: ../test/%.lz4 ../test/%.txt all
-	./dpu_lz4 -d -i $< -o test/$*.dpu_uncompressed 2>&1 | tee test/$*.dpu_output
-	cmp test/$*.dpu_uncompressed ../test/$*.txt

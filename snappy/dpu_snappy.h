@@ -2,6 +2,7 @@
 #define _DPU_SNAPPY_H_
 
 #include "common.h"
+#include "host_common.h"
 #include <sys/time.h>
 
 // Comment out to load data for each DPU individually
@@ -31,27 +32,6 @@ enum element_type
 	EL_TYPE_COPY_1,
 	EL_TYPE_COPY_2,
 	EL_TYPE_COPY_4
-};
-
-// Buffer context struct for input and output buffers on host
-typedef struct host_buffer_context
-{
-	const char *file_name;		// File name
-	uint8_t *buffer;		// Entire buffer
-	uint8_t *curr;			// Pointer to current location in buffer
-	unsigned long length;		// Length of buffer
-	unsigned long max;		// Maximum allowed lenght of buffer
-} host_buffer_context;
-
-// Breakdown of time spent doing each action
-struct program_runtime {
-	double pre;
-	double d_alloc;
-	double load;	
-	double copy_in;
-	double run;
-	double copy_out;
-	double d_free;
 };
 
 /**

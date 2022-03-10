@@ -2,66 +2,26 @@
 
 DPU implementation of LZ4 compression and decompression. 
 
-The implementation in this repository is highly based off of the C port of Google's LZ4 compressor, ported by [Andi Kleen](http://github.com/andikleen/lz4-c), with two important alterations:
+The implementation in this repository is highly based off of Yann Collet's [source code](https://github.com/lz4/lz4), and configured to work with 1 DPU and 1 Tasklet per block. There are two significant alterations:
 
-* Block input size used by LZ4 is now configurable (up to 64KB), rather than the set 64KB size in the original code. 
-* Format of compressed file is changed to allow for multi-threaded decompression:
-  * __Original Format:__ compressed file consists of the decompressed length followed by the compressed data. During compression, the input file is broken into 64KB chunks and each chunk is compressed separately. This results in independent compressed blocks in the output file. However, it is not possible to determine where each compressed block starts and ends, as there is no identifier for the start of a new block or indication for how long each compessed block is.
+* Block input size used by LZ4 is set to 4K, rather than the minimum 64KB size in the original code.
+* LZ4 only handles one 4K block per invocation; the handling of larger blocks must be done external to this module.
+  * __Original Format:__ compressed file consists of the decompressed length followed by the compressed data.
 	```
 	<START FILE>
 		<DECOMPRESSED LENGTH (varint)>
-		<COMPRESSED DATA>
-			<BLOCK 1>
-			<BLOCK 2>
-			...
+		<COMPRESSED DATA (4K block)>
 	<END FILE>
 	```
-  * __Altered Format:__ the compressed file is provided with more information to allow for determining where each compressed block is. This allows for a multi-threaded solution, because the compressed file can be broken up into independent pieces and parsed separately.
-	```
-	<START FILE>
-		<DECOMPRESSED LENGTH (varint)>
-		<DECOMPRESSED BLOCK SIZE (varint)>
-		<COMPRESSED DATA>
-			<BLOCK 1>
-				<BLOCK 1 SIZE (int)>
-				<BLOCK 1 DATA>
-			<BLOCK 2>
-				<BLOCK 2 SIZE (int)>
-				<BLOCK 2 DATA>
-			...
-	<END FILE>
-	```
-
 ## Build
 
 `make` to build both the host and DPU programs. 
 
-The default number of DPUs used is 1 and the default number of DPU tasklets is 1. To override the default use:
-
-`make NR_DPUS=<# dpus> NR_TASKLETS=<# tasks>`.
-
-## Test
-
-### Run all decompression tests on host and DPU
-```
-make test
-```
-
-### Run all decompression tests on only host or DPU
-```
-make test_host
-```
-
-```
-make test_dpu
-```
-
 ### Run specific test:
 ```
-./dpu\_lz4 [-d] [-c] [-b <block_size>] -i <input file> [-o <output file>]
+./dpu\_lz4 [-d] [-c] -i <input file> [-o <output file>]
 ```
 
 * Use the `-d` option to run the DPU program. Otherwise the program is run on host.
 * Use the `-c` option to perform compression on the input file. Otherwise, decompression is performed on the input file.
-* Use the `-b` option to specify a block size for use during compression, default is 32KB.
 * If no output file is specified, the decompressed file is saved to `output.txt`, otherwise it is saved to the specified output.

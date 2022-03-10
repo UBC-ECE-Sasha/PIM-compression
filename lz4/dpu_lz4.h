@@ -2,21 +2,18 @@
 #define _DPU_LZ4_H_
 
 #include "common.h"
+#include "host_common.h"
 #include <sys/time.h>
 
 // Comment out to load data for each DPU individually
 #define BULK_XFER
 
-#define GET_ELEMENT_TYPE(_tag)  (_tag & BITMASK(2))
-#define GET_LENGTH_1_uint8_t(_tag) ((_tag >> 2) & BITMASK(3))
-#define GET_OFFSET_1_uint8_t(_tag) ((_tag >> 5) & BITMASK(3))
-#define GET_LENGTH_2_uint8_t(_tag) ((_tag >> 2) & BITMASK(6))
-
 #define ALIGN_LONG(_p, _width) (((long)_p + (_width-1)) & (0-_width))
+#define GET_OFFSET_1_BYTE(_tag) ((_tag >> 5) & BITMASK(3))
 
 // Max length of the input and output files
 #define MAX_FILE_LENGTH MEGABYTE(30)
-#define BLOCK_SIZE 4*1024
+#define BLOCK_SIZE 4096
 
 /* LZ4 constants */
 #define MINMATCH 		 4
@@ -39,35 +36,6 @@ typedef enum {
 	LZ4_BUFFER_TOO_SMALL		// Input or output file size is too large
 } lz4_status;
 
-// LZ4 tag types
-enum element_type
-{
-	EL_TYPE_LITERAL,
-	EL_TYPE_COPY_1,
-	EL_TYPE_COPY_2,
-	EL_TYPE_COPY_4
-};
-
-// Buffer context struct for input and output buffers on host
-typedef struct host_buffer_context
-{
-	const char *file_name;		// File name
-	uint8_t *buffer;		// Entire buffer
-	uint8_t *curr;			// Pointer to current location in buffer
-	unsigned long length;		// Length of buffer
-	unsigned long max;		// Maximum allowed lenght of buffer
-} host_buffer_context;
-
-// Breakdown of time spent doing each action
-struct program_runtime {
-	double pre;
-	double d_alloc;
-	double load;	
-	double copy_in;
-	double run;
-	double copy_out;
-	double d_free;
-};
 
 /**
  * Calculate the difference between two timeval structs.

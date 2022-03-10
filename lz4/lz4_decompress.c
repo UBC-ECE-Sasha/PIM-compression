@@ -250,7 +250,7 @@ static inline uint16_t make_offset_1_byte(uint8_t tag, struct host_buffer_contex
 {
 	if (input->curr >= (input->buffer + input->length))
 		return 0;
-	return (uint16_t)(*input->curr++) | (uint16_t)(GET_OFFSET_1_uint8_t(tag) << 8);
+	return (uint16_t)(*input->curr++) | (uint16_t)(GET_OFFSET_1_BYTE(tag) << 8);
 }
 
 /**

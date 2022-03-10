@@ -73,10 +73,9 @@ static void usage(const char *exe_name)
 	fprintf(stderr, "**DEBUG BUILD**\n");
 #endif //DEBUG
 	fprintf(stderr, "Compress or decompress a file with LZ4\nCan use either the host CPU or UPMEM DPU\n");
-	fprintf(stderr, "usage: %s [-d] [-c] [-b <block_size>] -i <input_file> [-o <output_file>]\n", exe_name);
+	fprintf(stderr, "usage: %s [-d] [-c] -i <input_file> [-o <output_file>]\n", exe_name);
 	fprintf(stderr, "d: use DPU, by default host is used\n");
 	fprintf(stderr, "c: perform compression, by default performs decompression\n");
-	fprintf(stderr, "b: block size used for compression, default is 32KB, ignored for decompression\n");
 	fprintf(stderr, "i: input file\n");
 	fprintf(stderr, "o: output file\n");
 }
