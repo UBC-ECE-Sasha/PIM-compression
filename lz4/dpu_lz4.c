@@ -5,9 +5,9 @@
 #include <limits.h>
 #include <getopt.h>
 
-#include "dpu_snappy.h"
-#include "snappy_compress.h"
-#include "snappy_decompress.h"
+#include "dpu_lz4.h"
+#include "lz4_compress.h"
+#include "lz4_decompress.h"
 
 const char options[]="dcb:i:o:";
 
@@ -72,11 +72,10 @@ static void usage(const char *exe_name)
 #ifdef DEBUG
 	fprintf(stderr, "**DEBUG BUILD**\n");
 #endif //DEBUG
-	fprintf(stderr, "Compress or decompress a file with Snappy\nCan use either the host CPU or UPMEM DPU\n");
-	fprintf(stderr, "usage: %s [-d] [-c] [-b <block_size>] -i <input_file> [-o <output_file>]\n", exe_name);
+	fprintf(stderr, "Compress or decompress a file with LZ4\nCan use either the host CPU or UPMEM DPU\n");
+	fprintf(stderr, "usage: %s [-d] [-c] -i <input_file> [-o <output_file>]\n", exe_name);
 	fprintf(stderr, "d: use DPU, by default host is used\n");
 	fprintf(stderr, "c: perform compression, by default performs decompression\n");
-	fprintf(stderr, "b: block size used for compression, default is 32KB, ignored for decompression\n");
 	fprintf(stderr, "i: input file\n");
 	fprintf(stderr, "o: output file\n");
 }
@@ -93,11 +92,11 @@ double get_runtime(struct timeval *start, struct timeval *end) {
 int main(int argc, char **argv)
 {
 	int opt;
-	snappy_status status;
+	lz4_status status;
 	
 	int use_dpu = 0;
 	int compress = 0;
-	int block_size = 32 * 1024; // Default is 32KB
+	int block_size = BLOCK_SIZE; // Default is 32KB
 	char *input_file = NULL;
 	char *output_file = NULL;
 	struct host_buffer_context input;
@@ -126,7 +125,7 @@ int main(int argc, char **argv)
 			break;
 		
 		case 'b':
-			block_size = atoi(optarg);
+			block_size = BLOCK_SIZE;
 			break;
 
 		case 'i':
@@ -168,7 +167,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = snappy_compress_dpu(&input, &output, block_size, &runtime);
+			status = lz4_compress_dpu(&input, &output, block_size, &runtime);
 		}
 		else
 		{
@@ -176,7 +175,7 @@ int main(int argc, char **argv)
 			struct timeval end;
 
 			gettimeofday(&start, NULL);	
-			status = snappy_compress_host(&input, &output, block_size);
+			status = lz4_compress_host(&input, &output, block_size);
 			gettimeofday(&end, NULL);
 
 			runtime.run = get_runtime(&start, &end);
@@ -188,7 +187,7 @@ int main(int argc, char **argv)
 
 		if (use_dpu)
 		{
-			status = snappy_decompress_dpu(&input, &output, &runtime);
+			status = lz4_decompress_dpu(&input, &output, &runtime);
 		}
 		else
 		{
@@ -196,14 +195,14 @@ int main(int argc, char **argv)
 			struct timeval end;
 
 			gettimeofday(&start, NULL);
-			status = snappy_decompress_host(&input, &output);
+			status = lz4_decompress_host(&input, &output);
 			gettimeofday(&end, NULL);
 
 			runtime.run = get_runtime(&start, &end);
 		}
 	}
 	
-	if (status == SNAPPY_OK)
+	if (status == LZ4_OK)
 	{
 		// Write the output buffer from main memory to a file
 		if (!(compress && use_dpu))
@@ -212,8 +211,7 @@ int main(int argc, char **argv)
 		if (compress) {
 			printf("Compressed %ld bytes to: %s\n", output.length, output_file);
 			printf("Compression ratio: %f\n", (double)input.length / (double)output.length);
-		}
-		else {
+		} else {
 			printf("Decompressed %ld bytes to: %s\n", output.length, output_file);
 			printf("Compression ratio: %f\n", (double)output.length / (double)input.length);
 		}
@@ -228,7 +226,7 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		fprintf(stderr, "Encountered Snappy error %u\n", status);
+		fprintf(stderr, "Encountered LZ4 error %u\n", status);
 		return -1;
 	}
 

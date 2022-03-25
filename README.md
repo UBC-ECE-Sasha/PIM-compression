@@ -16,8 +16,10 @@ There are several test files in the 'test' directory. Each file is in uncompress
 * __nci__ (33,553,445 bytes) - chemical database of structures
 * __mozilla__ (51,220,480 bytes) - tarred executables of Mozilla 1.0
 * __spamfile__ (84,217,482 bytes) - snapshot of collected spam emails
-* [missing] (~64MB) - to stress out the maximum size of MRAM for the DPU
   
 ## Snappy
 Snappy is written by Google. It is meant for simple & fast decoding, generally for text files which are highly repetitive. The compression ratio can be quite good ('terror2' has a 2:1 ratio) considering the simplicity of the algorithm.
 To encode files using the original Snappy format, the "scmd" tool found [here](http://github.com/andikleen/snappy-c.git) can be used. The format used in our compressor/decompressor has been slightly modified to allow for a multi-threaded implementation. A description of this format can be found [here](https://github.com/UBC-ECE-Sasha/PIM-compression/tree/master/snappy/host-compress), alongside the compressor that was used to generate the test files.
+
+## LZ4
+LZ4 is a branch of the LZ77 compression algorithms, with a focus on compression and decompression speeds rather than compression ratio. The source code can be found [here](https://github.com/lz4/lz4)
